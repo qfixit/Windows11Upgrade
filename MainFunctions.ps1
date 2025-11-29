@@ -12,12 +12,18 @@ function Write-Log {
         [string]$Level = "INFO"
     )
 
+    if ([string]::IsNullOrWhiteSpace($logFile)) {
+        $logFile = "C:\Windows11UpgradeLog.txt"
+    }
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "$timestamp [$Level] $Message"
 
-    $directory = Split-Path -Path $logFile -Parent
-    if (-not [string]::IsNullOrWhiteSpace($directory) -and -not (Test-Path -Path $directory)) {
-        New-Item -Path $directory -ItemType Directory -Force | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($logFile)) {
+        $directory = Split-Path -Path $logFile -Parent
+        if (-not [string]::IsNullOrWhiteSpace($directory) -and -not (Test-Path -Path $directory)) {
+            New-Item -Path $directory -ItemType Directory -Force | Out-Null
+        }
     }
 
     $maxAttempts = 5
@@ -157,21 +163,7 @@ function Write-ExecutionSummary {
             return "N/A"
         }
 
-        try {
-            $ts = $null
-            if ($Duration -is [TimeSpan]) {
-                $ts = $Duration
-            } elseif ($Duration -is [string]) {
-                [void][System.TimeSpan]::TryParse($Duration, [ref]$ts)
-            } else {
-                [void][System.TimeSpan]::TryParse($Duration.ToString(), [ref]$ts)
-            }
-            if (-not $ts) { $ts = [System.TimeSpan]$Duration }
-            return ("{0:hh\\:mm\\:ss\\.fff} ({1:N2} seconds)" -f $ts, $ts.TotalSeconds)
-        } catch {
-            Write-Log -Message ("Failed to format duration value {0}. Error: {1}" -f $Duration, $_) -Level "WARN"
-            return "$Duration"
-        }
+        return ("{0:hh\:mm\:ss\.fff} ({1:N2} seconds)" -f $Duration, $Duration.TotalSeconds)
     }
 
     Write-Log -Message "Execution timing summary:" -Level "INFO"
