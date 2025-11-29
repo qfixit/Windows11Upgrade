@@ -103,5 +103,9 @@ $Action2ButtonText = 'Contact Koltiv Support'
 $xmlDocument = New-Object Windows.Data.Xml.Dom.XmlDocument
 $xmlDocument.LoadXml($toastXml.OuterXml)
 
-try { [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($App).Show($xmlDocument) }
-catch { Write-Warning ("Failed to display the notification. Error: {0}" -f $_) }
+try {
+    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($App).Show($xmlDocument)
+    Write-Log "Installation complete toast notification displayed." -severity Info
+} catch {
+   Write-Warning ("Failed to display the notification. Error: {0}" -f $_)
+}

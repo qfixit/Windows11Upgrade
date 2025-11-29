@@ -112,6 +112,7 @@ $XmlDocument.LoadXml($ToastXml.OuterXml)
 
 try {
     [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($App).Show($XmlDocument)
+    Write-Log "Windows 11 download started toast notification displayed." -severity Info
 } catch {
     Write-Warning ("Failed to display the notification. Error: {0}" -f $_)
 }

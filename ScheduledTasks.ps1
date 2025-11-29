@@ -43,7 +43,7 @@ function Register-RebootReminderTasks {
         return
     }
 
-    $command = "`"$powershellExe`" -ExecutionPolicy Bypass -NoProfile -File `"$toastReminderScript`""
+    $command = "`"$powershellExe`" -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File `"$toastReminderScript`""
     Write-Log -Message ("Reminder task command: {0}" -f $command) -Level "VERBOSE"
 
     foreach ($taskName in $reminderTaskNames) {
@@ -83,7 +83,7 @@ function Register-RebootReminderTasks {
             Write-Log -Message ("Cannot create reminder action because PowerShell or toast script path is empty. PowerShell={0}; Toast={1}" -f $powershellExe, $toastReminderScript) -Level "WARN"
             return
         }
-        $actionObj = New-ScheduledTaskAction -Execute $powershellExe -Argument ("-ExecutionPolicy Bypass -NoProfile -File `"{0}`"" -f $toastReminderScript)
+        $actionObj = New-ScheduledTaskAction -Execute $powershellExe -Argument ("-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File `"{0}`"" -f $toastReminderScript)
         $principal = New-ScheduledTaskPrincipal -UserId "INTERACTIVE" -LogonType Interactive -RunLevel Highest
 
         foreach ($taskName in $reminderTaskNames) {
