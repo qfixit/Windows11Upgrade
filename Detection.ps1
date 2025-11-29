@@ -1,6 +1,7 @@
 # Detection Helpers
 # Version 2.5.1
-# Date 11-28-2025
+# Date 11/28/2025
+# Author Remark: Quintin Sheppard
 # Summary: OS detection and boot-time helpers.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Private\\Detection\\Detection.ps1'; Test-IsWindows11"
 

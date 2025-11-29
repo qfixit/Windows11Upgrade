@@ -1,0 +1,26 @@
+<toast scenario="reminder">
+    <visual>
+        <binding template="ToastGeneric">
+            <image placement="hero" src="$heroPath"/>
+            <image id="1" placement="appLogoOverride" hint-crop="circle" src="$logoPath"/>
+            <text placement="attribution">$AttributionText</text>
+            <text>$HeaderText</text>
+            <group>
+                <subgroup>
+                    <text hint-style="title" hint-wrap="true">$TitleText</text>
+                </subgroup>
+            </group>
+            <group>
+                <subgroup>
+                    <text hint-style="body" hint-wrap="true">$BodyText1</text>
+                    <text hint-style="body" hint-wrap="true">$BodyText2</text>
+                </subgroup>
+            </group>
+        </binding>
+    </visual>
+    <audio src="ms-winsoundevent:Notification.Looping.Alarm" silent="$SilentAlarm"/>
+    <actions>
+        <action activationType="protocol" arguments="$Action" content="$ActionButtonContent"/>
+        <action activationType="protocol" arguments="$Action2" content="$Action2ButtonContent"/>
+    </actions>
+</toast>

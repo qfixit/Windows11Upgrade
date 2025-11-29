@@ -1,6 +1,7 @@
 # Core Utilities & Progress Helpers
 # Version 2.5.1
-# Date 11-28-2025
+# Date 11/28/2025
+# Author Remark: Quintin Sheppard
 # Summary: Common logging, directory creation, and progress/summary helpers used across the upgrade workflow.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\MainFunctions.ps1'; Write-Log 'hello world'"
 
@@ -11,12 +12,18 @@ function Write-Log {
         [string]$Level = "INFO"
     )
 
+    if ([string]::IsNullOrWhiteSpace($logFile)) {
+        $logFile = "C:\Windows11UpgradeLog.txt"
+    }
+
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     $logMessage = "$timestamp [$Level] $Message"
 
-    $directory = Split-Path -Path $logFile -Parent
-    if (-not [string]::IsNullOrWhiteSpace($directory) -and -not (Test-Path -Path $directory)) {
-        New-Item -Path $directory -ItemType Directory -Force | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($logFile)) {
+        $directory = Split-Path -Path $logFile -Parent
+        if (-not [string]::IsNullOrWhiteSpace($directory) -and -not (Test-Path -Path $directory)) {
+            New-Item -Path $directory -ItemType Directory -Force | Out-Null
+        }
     }
 
     $maxAttempts = 5
@@ -156,13 +163,7 @@ function Write-ExecutionSummary {
             return "N/A"
         }
 
-        try {
-            $ts = if ($Duration -is [string]) { [TimeSpan]::Parse($Duration) } else { [TimeSpan]$Duration }
-            return ("{0:hh\\:mm\\:ss\\.fff} ({1:N2} seconds)" -f $ts, $ts.TotalSeconds)
-        } catch {
-            Write-Log -Message ("Failed to format duration value {0}. Error: {1}" -f $Duration, $_) -Level "WARN"
-            return "$Duration"
-        }
+        return ("{0:hh\:mm\:ss\.fff} ({1:N2} seconds)" -f $Duration, $Duration.TotalSeconds)
     }
 
     Write-Log -Message "Execution timing summary:" -Level "INFO"

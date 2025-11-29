@@ -1,6 +1,7 @@
 # Windows 11 Reboot Reminder Toast Notification
 # Version 2.5.1
-# Date 11-28-2025
+# Date 11/28/2025
+# Author Remark: Quintin Sheppard
 
 [CmdletBinding()]
 param(
@@ -111,6 +112,7 @@ $XmlDocument.LoadXml($ToastXml.OuterXml)
 
 try {
     [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($App).Show($XmlDocument)
+    Write-Log "Reboot reminder toast notification displayed." -severity Info
 } catch {
     Write-Warning ("Failed to display the notification. Error: {0}" -f $_)
 }

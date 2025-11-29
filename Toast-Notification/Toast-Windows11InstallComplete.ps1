@@ -1,6 +1,7 @@
 # Windows 11 Installation Complete Toast Notification
 # Version 2.5.1
-# Date 11-28-2025
+# Date 11/28/2025
+# Author Remark: Quintin Sheppard
 
 [CmdletBinding()]
 param(
@@ -102,5 +103,9 @@ $Action2ButtonText = 'Contact Koltiv Support'
 $xmlDocument = New-Object Windows.Data.Xml.Dom.XmlDocument
 $xmlDocument.LoadXml($toastXml.OuterXml)
 
-try { [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($App).Show($xmlDocument) }
-catch { Write-Warning ("Failed to display the notification. Error: {0}" -f $_) }
+try {
+    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($App).Show($xmlDocument)
+    Write-Log "Installation complete toast notification displayed." -severity Info
+} catch {
+   Write-Warning ("Failed to display the notification. Error: {0}" -f $_)
+}
