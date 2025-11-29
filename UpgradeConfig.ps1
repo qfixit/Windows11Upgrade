@@ -59,7 +59,7 @@ function Set-UpgradeConfig {
     }
 
     # Ensure directories/files exist
-    foreach ($dir in @($config.StateDirectory, $config.ToastAssetsRoot, "C:\Temp\ToastAssets")) {
+    foreach ($dir in @($config.StateDirectory, $config.ToastAssetsRoot)) {
         if (-not (Test-Path -Path $dir)) {
             New-Item -Path $dir -ItemType Directory -Force | Out-Null
         }

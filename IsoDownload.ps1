@@ -184,7 +184,11 @@ function Invoke-TimedSetupExecution {
         $elapsed = $stopwatch.Elapsed
         $script:SetupExecutionDuration = $elapsed
         try {
-            $durationText = "{0:hh\\:mm\\:ss\\.fff} ({1:N2} seconds)" -f $elapsed, $elapsed.TotalSeconds
+            if ($elapsed) {
+                $durationText = ("{0} ({1} seconds)" -f $elapsed.ToString("hh':'mm':'ss'.'fff", [System.Globalization.CultureInfo]::InvariantCulture), [math]::Round($elapsed.TotalSeconds, 2))
+            } else {
+                throw "Elapsed duration is null."
+            }
         } catch {
             Write-Log -Message ("Failed to format setup.exe duration. Error: {0}" -f $_) -Level "WARN"
             $durationText = "$($elapsed)"

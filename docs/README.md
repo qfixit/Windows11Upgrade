@@ -3,7 +3,7 @@
 ## Overview
 - Stages Windows 11 25H2 from ISO using `setup.exe` with `/Quiet` and optional `/noreboot`.
 - Entry script (modular): `Windows11Upgrade.ps1` loads helpers under the same folder.
-- Logs to `C:\Windows11UpgradeLog.txt` (falls back to `C:\Windows11UpgradeLog-$COMPUTERNAME.txt`).
+- Logs to `C:\Windows11UpgradeLog.txt` (falls back to `C:\Windows11UpgradeLog-$COMPUTERNAME.txt` if the primary was renamed).
 - State markers: `C:\Temp\WindowsUpdate\ScriptRunning.txt`, `PendingReboot.txt`, `UpgradeFailed.txt`.
 - Toast assets/scripts live in `Windows11Upgrade\Toast-Notification`; tasks schedule reboot reminders and post-reboot validation.
 
@@ -43,8 +43,8 @@
 - Hardware checks: TPM 2.0, Secure Boot, 64-bit CPU, RAM ≥ 4 GB, disk space check (64 GB default).
 
 ## Logs & Troubleshooting
-- Main log: `C:\Windows11UpgradeLog.txt`. Watch for:
-  - Duration formatting warnings (resolved in v2.5.7).
+- Main log: `C:\Windows11UpgradeLog.txt` (or `C:\Windows11UpgradeLog-$COMPUTERNAME.txt` if the primary was renamed). Watch for:
+  - Duration formatting warnings (resolved in v2.5.7+ with invariant formatting).
   - Task registration errors: check `schtasks` command/output in log and verify paths for `Toast-Notification` scripts and PowerShell (`System32\WindowsPowerShell\v1.0\powershell.exe`).
 - Failure marker: `C:\Temp\WindowsUpdate\UpgradeFailed.txt` (contains reason). Pending state: `PendingReboot.txt`.
 - Self-repair: reruns staging if device rebooted without completing upgrade; cleans stale artifacts on failure.
@@ -57,13 +57,19 @@ cd .\Windows11Upgrade
 ```
 
 ## Notes
-- Keep `Windows11Upgrade` folder intact; scripts expect relative module paths.
+- Keep `WindowsUpgrade` folder intact; scripts expect relative module paths.
 - Do not rename marker files (`PendingReboot.txt`, `UpgradeFailed.txt`); monitors depend on them.
 - Ensure `hero.jpg` and `logo.jpg` are present in the toast folder before scheduling reminders.
+- Successful post-upgrade cleanup removes `C:\Temp\WindowsUpdate` (including the staged scripts) and archives setup logs; only the main log remains.
 
 ---
 
 # Changelog
+
+## 2.5.8 - 2025-11-29
+- Removed unused `C:\Temp\ToastAssets` creation and added cleanup coverage for any remnants.
+- Post-upgrade cleanup now always logs to the primary/renamed log file and removes `C:\Temp\WindowsUpdate` (including staged scripts) after success.
+- Hardened task registration deletes to ignore missing-task errors and tightened duration formatting with invariant culture.
 
 ## 2.5.7 - 2025-11-28
 - Hardened duration formatting (TryParse) for ISO/setup phases and execution summaries to eliminate `TimeSpan` string errors.
@@ -91,7 +97,7 @@ cd .\Windows11Upgrade
 - Each helper script now carries version/date headers plus example test commands, and the cleanup module offers a `-ListCleanupTargets` preview to validate post-upgrade tidy-up safely.
 
 ## 2.4.1 - 2025-11-27
-- Fixed toast delivery failures (“system cannot find the file specified”) by writing helper scripts to stable paths, pre-creating `C:\Temp\ToastAssets`, and invoking toasts via absolute `wscript.exe`/`powershell.exe` paths with richer schtasks logging when creation/run fails.
+- Fixed toast delivery failures (“system cannot find the file specified”) by writing helper scripts to stable paths and invoking toasts via absolute `wscript.exe`/`powershell.exe` paths with richer schtasks logging when creation/run fails.
 - Simplified progress logging strings to `ISO download progress X%` and `Install progress X%`.
 - Stopped logging the benign “BITS job disappeared” warning after transfers finish by breaking the poll loop as soon as the transfer completes.
 
