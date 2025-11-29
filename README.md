@@ -65,11 +65,11 @@ cd .\Windows11Upgrade
 
 # Changelog
 
-## 2.5.1 - 2025-12-09
+## 2.5.1 - 2025-11-28
 - Hardened ISO/setup duration logging so formatting errors can no longer abort staging after a successful download; duration strings now fall back gracefully while still recording warnings.
 - Ensured ISO downloads proceed to hash validation/caching even if duration formatting misbehaves, preventing false `Failed to download ISO` interruptions once media is present.
 
-## 2.5.0 - 2025-12-07
+## 2.5.0 - 2025-11-28
 - Split the upgrade script into modular helpers under `Private/` (`Toast-Notification`, `ISO Download`, `Post-Upgrade Cleanup`) with the entry point now in `Public/Windows11Upgrade_v2.5.0.ps1` for zip-based deployment.
 - Added early module-load validation so staging aborts with a clear error if any helper script is missing, keeping the new zip layout predictable for RMM delivery.
 - Each helper script now carries version/date headers plus example test commands, and the cleanup module offers a `-ListCleanupTargets` preview to validate post-upgrade tidy-up safely.
