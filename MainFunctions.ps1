@@ -1,6 +1,7 @@
 # Core Utilities & Progress Helpers
 # Version 2.5.1
-# Date 11-28-2025
+# Date 11/28/2025
+# Author Remark: Quintin Sheppard
 # Summary: Common logging, directory creation, and progress/summary helpers used across the upgrade workflow.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\MainFunctions.ps1'; Write-Log 'hello world'"
 

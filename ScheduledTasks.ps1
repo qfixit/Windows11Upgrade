@@ -1,6 +1,7 @@
 # Scheduled Task Helpers
 # Version 2.5.1
-# Date 11-28-2025
+# Date 11/28/2025
+# Author Remark: Quintin Sheppard
 # Summary: Registers/cleans reboot reminder tasks and post-reboot validation tasks.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\ScheduledTasks.ps1'; Register-RebootReminderTasks"
 

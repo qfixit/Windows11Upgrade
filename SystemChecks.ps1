@@ -1,6 +1,7 @@
 # System & Compatibility Checks
 # Version 2.5.1
-# Date 11-28-2025
+# Date 11/28/2025
+# Author Remark: Quintin Sheppard
 # Summary: Hardware and SentinelOne compatibility validation for the upgrade workflow.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Private\\SystemChecks\\SystemChecks.ps1'; Check-SystemRequirements"
 
