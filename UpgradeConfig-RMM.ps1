@@ -1,14 +1,13 @@
 # Upgrade Configuration (RMM Parameter-Aware Builder)
 # Version 2.5.7
-# Date 11/28/2025
-# Author Remark: Quintin Sheppard
-# Summary: Accepts ConnectWise RMM parameter substitutions, writes the resolved config to C:\Temp\Windows11Upgrade\UpgradeConfig.ps1, and exposes Set-UpgradeConfig for direct use.
+# Date 12-10-2025
+# Summary: Accepts ConnectWise RMM parameter substitutions, writes the resolved config to C:\Temp\WindowsUpdate\UpgradeConfig.ps1, and exposes Set-UpgradeConfig for direct use.
 # Example (RMM task build step):
 #   powershell.exe -ExecutionPolicy Bypass -NoProfile -File ".\UpgradeConfig-RMM.ps1" -EmitResolvedFile `
 #       -Windows11IsoUrl @Windows11IsoUrl@ -ISOHash @ISOHash@ -DynamicUpdate @DynamicUpdate@ -AutoReboot @AutoReboot@ `
 #       -RebootReminder1Time @RebootReminder1Time@ -RebootReminder2Time @RebootReminder2Time@
 # Example (direct use after copy):
-#   powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\UpgradeConfig.ps1'; Set-UpgradeConfig"
+#   powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\WindowsUpdate\\UpgradeConfig.ps1'; Set-UpgradeConfig"
 
 param(
     [switch]$EmitResolvedFile,
@@ -27,6 +26,57 @@ $script:DynamicUpdateParam        = if ($PSBoundParameters.ContainsKey("DynamicU
 $script:AutoRebootParam           = if ($PSBoundParameters.ContainsKey("AutoReboot")) { $AutoReboot } else { "@AutoReboot@" }
 $script:RebootReminder1TimeParam  = if ($PSBoundParameters.ContainsKey("RebootReminder1Time")) { $RebootReminder1Time } else { "@RebootReminder1Time@" }
 $script:RebootReminder2TimeParam  = if ($PSBoundParameters.ContainsKey("RebootReminder2Time")) { $RebootReminder2Time } else { "@RebootReminder2Time@" }
+
+# Write-Log Function
+$logFile = "C:\Windows11UpgradeLog.txt"
+function Write-Log {
+    param (
+        [string]$Message,
+        [ValidateSet("INFO", "WARN", "ERROR", "VERBOSE")]
+        [string]$Level = "INFO"
+    )
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logMessage = "$timestamp [$Level] $Message"
+
+    $directory = Split-Path -Path $logFile -Parent
+    if (-not [string]::IsNullOrWhiteSpace($directory) -and -not (Test-Path -Path $directory)) {
+        New-Item -Path $directory -ItemType Directory -Force | Out-Null
+    }
+
+    $maxAttempts = 5
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            $fileStream = [System.IO.File]::Open($logFile,
+                                                 [System.IO.FileMode]::OpenOrCreate,
+                                                 [System.IO.FileAccess]::Write,
+                                                 [System.IO.FileShare]::ReadWrite)
+            $fileStream.Seek(0, [System.IO.SeekOrigin]::End) | Out-Null
+            $writer = New-Object System.IO.StreamWriter($fileStream, [System.Text.Encoding]::UTF8)
+            $writer.WriteLine($logMessage)
+            $writer.Dispose()
+            $fileStream.Dispose()
+            break
+        } catch {
+            if ($attempt -eq $maxAttempts) {
+                Write-Warning "Unable to append to $logFile after $maxAttempts attempts. Error: $_"
+            } else {
+                Start-Sleep -Milliseconds 250
+            }
+        }
+    }
+
+    switch ($Level) {
+        "ERROR"   { Write-Error $logMessage }
+        "WARN"    { Write-Warning $logMessage }
+        "VERBOSE" { Write-Verbose $logMessage }
+        default   { Write-Host $logMessage }
+    }
+
+    if ($Level -ne "VERBOSE") {
+        Write-Verbose $logMessage
+    }
+}
 
 function Resolve-ParameterValue {
     param(
@@ -56,13 +106,13 @@ function Resolve-BoolParameter {
     return $Default
 }
 
-$resolvedWindows11IsoUrl    = Resolve-ParameterValue -Value $script:Windows11IsoUrlParam     -Default "https://acsia-my.sharepoint.com/:u:/g/personal/qsheppard_koltiv_com/ESDEaFWZhrdOrKBuT8VyYHABHSP6rvW0OG2u6XkHGxksFw?download=1"
+$resolvedWindows11IsoUrl    = Resolve-ParameterValue -Value $script:Windows11IsoUrlParam     -Default "example.com*"
 $resolvedExpectedIsoSha256  = Resolve-ParameterValue -Value $script:ExpectedIsoSha256Param   -Default "D141F6030FED50F75E2B03E1EB2E53646C4B21E5386047CB860AF5223F102A32"
 $resolvedDynamicUpdate      = Resolve-BoolParameter   -Value $script:DynamicUpdateParam      -Default $true
 $resolvedAutoReboot         = Resolve-BoolParameter   -Value $script:AutoRebootParam         -Default $false
 $resolvedRebootReminder1    = Resolve-ParameterValue  -Value $script:RebootReminder1TimeParam -Default "11:00"
 $resolvedRebootReminder2    = Resolve-ParameterValue  -Value $script:RebootReminder2TimeParam -Default "16:00"
-$resolvedToastAssetsRoot    = "C:\Temp\Windows11Upgrade\Toast-Notification"
+$resolvedToastAssetsRoot    = "C:\Temp\WindowsUpdate\Toast-Notification"
 $resolvedToastHeroImage     = "hero.jpg"
 $resolvedToastLogoImage     = "logo.jpg"
 $resolvedSetupArgs          = $null
@@ -142,7 +192,7 @@ function Set-UpgradeConfig {
 }
 
 function Write-ResolvedUpgradeConfigFile {
-    $targetPath = "C:\Temp\Windows11Upgrade\UpgradeConfig.ps1"
+    $targetPath = "C:\Temp\WindowsUpdate\UpgradeConfig.ps1"
     $targetDir = Split-Path -Path $targetPath -Parent
 
     if (-not (Test-Path -Path $targetDir)) {
@@ -152,8 +202,7 @@ function Write-ResolvedUpgradeConfigFile {
     $template = @'
 # Upgrade Configuration
 # Version 2.5.7
-# Date 11/28/2025
-# Author Remark: Quintin Sheppard
+# Date 12-10-2025
 # Generated by RMM task with parameter substitution.
 
 function Set-UpgradeConfig {
@@ -235,7 +284,7 @@ function Set-UpgradeConfig {
     }
 
     Set-Content -Path $targetPath -Value $content -Encoding ASCII
-    Write-Host "UpgradeConfig.ps1 generated at $targetPath"
+    Write-Log "UpgradeConfig.ps1 generated at $targetPath"
 }
 
 # Always write the resolved config so the active UpgradeConfig.ps1 is replaced for the current run.
