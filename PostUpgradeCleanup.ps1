@@ -1,6 +1,7 @@
 # Post-Upgrade Cleanup Helpers
 # Version 2.5.0
-# Date 11-28-2025
+# Date 11/28/2025
+# Author Remark: Quintin Sheppard
 # Summary: Cleans staged artifacts after success/failure, archives logs, and resets state/sentinels for the Windows 11 upgrade workflow.
 # Example (dry list of targets): powershell.exe -ExecutionPolicy Bypass -NoProfile -File ".\Private\Post-Upgrade Cleanup\PostUpgradeCleanup.ps1" -ListCleanupTargets
 

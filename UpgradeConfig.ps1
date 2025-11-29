@@ -1,6 +1,7 @@
 # Upgrade Configuration
 # Version 2.5.1
-# Date 2025-12-08
+# Date 11/28/2025
+# Author Remark: Quintin Sheppard
 # Summary: Centralized configuration for paths, URLs, hashes, toast assets, and logging/state settings.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\UpgradeConfig.ps1'; $cfg = Set-UpgradeConfig; $cfg.LogFile"
 
