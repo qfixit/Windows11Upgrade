@@ -10,11 +10,28 @@ param(
     [switch]$ListCleanupTargets
 )
 
+if (-not $logFile) {
+    $baseLog = "C:\Windows11UpgradeLog.txt"
+    $deviceLog = "C:\Windows11UpgradeLog-$($env:COMPUTERNAME).txt"
+    $logFile = if ((-not (Test-Path -Path $baseLog)) -and (Test-Path -Path $deviceLog)) { $deviceLog } else { $baseLog }
+    if (-not (Test-Path -Path $logFile)) {
+        try { New-Item -Path $logFile -ItemType File -Force | Out-Null } catch { }
+    }
+}
+
 if (-not (Get-Command -Name Write-Log -ErrorAction SilentlyContinue)) {
     function Write-Log {
         param([string]$Message, [string]$Level = "INFO")
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        Write-Host "$timestamp [$Level] $Message"
+        $formatted = "$timestamp [$Level] $Message"
+        try {
+            if ($script:logFile -and (Test-Path -Path $script:logFile)) {
+                Add-Content -Path $script:logFile -Value $formatted
+            } elseif ($logFile) {
+                Add-Content -Path $logFile -Value $formatted
+            }
+        } catch {}
+        Write-Host $formatted
     }
 }
 
@@ -90,6 +107,7 @@ function Invoke-PostUpgradeCleanup {
     $pathsToDelete = @(
         $setupLogsPath,
         (Join-Path -Path $stateDirectory -ChildPath "ToastAssets"),
+        "C:\Temp\ToastAssets",
         (Join-Path -Path $stateDirectory -ChildPath "RunHidden_*.vbs"),
         (Join-Path -Path $stateDirectory -ChildPath "RebootReminderNotification.ps1"),
         (Join-Path -Path $stateDirectory -ChildPath "RunHiddenReminder.vbs"),
