@@ -22,7 +22,7 @@ function Set-UpgradeConfig {
         FailureMarker                = "C:\Temp\WindowsUpdate\UpgradeFailed.txt"              # marker watched by RMM
 
         # ISO download/validation
-        Windows11IsoUrl              = "https://acsia-my.sharepoint.com/:u:/g/personal/qsheppard_koltiv_com/ESDEaFWZhrdOrKBuT8VyYHABHSP6rvW0OG2u6XkHGxksFw?download=1" # ISO download source
+        Windows11IsoUrl              = "example.com*" # ISO download source
         ExpectedIsoSha256            = "D141F6030FED50F75E2B03E1EB2E53646C4B21E5386047CB860AF5223F102A32"                      # expected ISO hash
         IsoFilePath                  = "C:\Temp\WindowsUpdate\Windows11_25H2.iso"             # staged ISO path
         IsoHashCacheFile             = "C:\Temp\WindowsUpdate\Windows11_25H2.iso.sha256"      # cached SHA for ISO reuse
@@ -42,9 +42,9 @@ function Set-UpgradeConfig {
         PostRebootScriptPath         = "C:\Temp\WindowsUpdate\Windows11Upgrade_PostReboot.ps1" # persisted script for post-reboot validation
 
         # Toast configuration
-        ToastAssetsRoot              = "C:\Temp\ToastAssets"                                  # cached toast assets
-        ToastHeroImagePrimaryUrl     = "https://msftstories.thesourcemediaassets.com/sites/620/2021/09/Hero-Bloom-Logo-800x533.jpg" # hero image
-        ToastLogoImagePrimaryUrl     = "https://media.licdn.com/dms/image/v2/D560BAQH_g3042zbH8Q/company-logo_200_200/B56ZfLQBu3HoAI-/0/1751461666023?e=2147483647&v=beta&t=mgsvAe6Nkh8iJIHtcBlQy5CCKH8Wg3e4tvtY1vrBOxg" # logo image
+        ToastAssetsRoot              = "C:\Temp\WindowsUpdate\Toast-Notification"                                  # cached toast assets
+        ToastHeroImagePrimaryUrl     = "hero.jpg" # hero image
+        ToastLogoImagePrimaryUrl     = "logo.jpg" # logo image
         ToastAttributionText         = "Koltiv"                                               # toast attribution
         ToastHeaderText              = "Windows 11 Upgrade"                                   # toast header/title
 

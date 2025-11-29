@@ -162,11 +162,11 @@ function Write-ExecutionSummary {
             if ($Duration -is [TimeSpan]) {
                 $ts = $Duration
             } elseif ($Duration -is [string]) {
-                [void][TimeSpan]::TryParse($Duration, [ref]$ts)
+                [void][System.TimeSpan]::TryParse($Duration, [ref]$ts)
             } else {
-                [void][TimeSpan]::TryParse($Duration.ToString(), [ref]$ts)
+                [void][System.TimeSpan]::TryParse($Duration.ToString(), [ref]$ts)
             }
-            if (-not $ts) { $ts = [TimeSpan]$Duration }
+            if (-not $ts) { $ts = [System.TimeSpan]$Duration }
             return ("{0:hh\\:mm\\:ss\\.fff} ({1:N2} seconds)" -f $ts, $ts.TotalSeconds)
         } catch {
             Write-Log -Message ("Failed to format duration value {0}. Error: {1}" -f $Duration, $_) -Level "WARN"

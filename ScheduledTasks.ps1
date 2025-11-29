@@ -51,7 +51,8 @@ function Register-RebootReminderTasks {
     }
 
     if ($user) {
-        $createArgs1 = "/Create", "/TN", $reminderTaskNames[0], "/TR", $command, "/SC", "DAILY", "/ST", $RebootReminder1Time, "/RL", "HIGHEST", "/F", "/IT", "/RU", $user
+        $taskCommand = ('"{0}"' -f $command)
+        $createArgs1 = "/Create", "/TN", $reminderTaskNames[0], "/TR", $taskCommand, "/SC", "DAILY", "/ST", $RebootReminder1Time, "/RL", "HIGHEST", "/F", "/IT", "/RU", $user
         $output1 = & C:\Windows\System32\schtasks.exe $createArgs1 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Log -Message ("Failed to register {0}. Exit code: {1}. Command: schtasks {2}" -f $reminderTaskNames[0], $LASTEXITCODE, ($createArgs1 -join " ")) -Level "ERROR"
@@ -60,7 +61,7 @@ function Register-RebootReminderTasks {
             Write-Log -Message ("{0} registered for {1} daily." -f $reminderTaskNames[0], $RebootReminder1Time) -Level "INFO"
         }
 
-        $createArgs2 = "/Create", "/TN", $reminderTaskNames[1], "/TR", $command, "/SC", "DAILY", "/ST", $RebootReminder2Time, "/RL", "HIGHEST", "/F", "/IT", "/RU", $user
+        $createArgs2 = "/Create", "/TN", $reminderTaskNames[1], "/TR", $taskCommand, "/SC", "DAILY", "/ST", $RebootReminder2Time, "/RL", "HIGHEST", "/F", "/IT", "/RU", $user
         $output2 = & C:\Windows\System32\schtasks.exe $createArgs2 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Log -Message ("Failed to register {0}. Exit code: {1}. Command: schtasks {2}" -f $reminderTaskNames[1], $LASTEXITCODE, ($createArgs2 -join " ")) -Level "ERROR"
