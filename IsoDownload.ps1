@@ -65,6 +65,7 @@ function Invoke-TimedIsoDownload {
     $lastPercentLogged = -5
     $downloadCompleted = $false
     try {
+																				 
         $job = Start-BitsTransfer -Source $SourceUrl -Destination $DestinationPath -DisplayName "Windows11ISO" -Description "Windows 11 ISO download" -Asynchronous
         while ($true) {
             Start-Sleep -Seconds 5
@@ -140,10 +141,7 @@ function Invoke-TimedIsoDownload {
         $elapsed = $stopwatch.Elapsed
         $script:IsoDownloadDuration = $elapsed
         try {
-            $ts = $null
-            [void][System.TimeSpan]::TryParse($elapsed.ToString(), [ref]$ts)
-            if (-not $ts) { $ts = [System.TimeSpan]$elapsed }
-            $durationText = "{0:hh\\:mm\\:ss\\.fff} ({1:N2} seconds)" -f $ts, $ts.TotalSeconds
+            Write-Log -Message ("ISO download duration: {0:hh\:mm\:ss\.fff} ({1:N2} seconds)" -f $elapsed, $elapsed.TotalSeconds) -Level "INFO"
         } catch {
             Write-Log -Message ("Failed to format ISO download duration. Error: {0}" -f $_) -Level "WARN"
             $durationText = "$($elapsed)"
@@ -186,10 +184,7 @@ function Invoke-TimedSetupExecution {
         $elapsed = $stopwatch.Elapsed
         $script:SetupExecutionDuration = $elapsed
         try {
-            $ts = $null
-            [void][System.TimeSpan]::TryParse($elapsed.ToString(), [ref]$ts)
-            if (-not $ts) { $ts = [System.TimeSpan]$elapsed }
-            $durationText = "{0:hh\\:mm\\:ss\\.fff} ({1:N2} seconds)" -f $ts, $ts.TotalSeconds
+            $durationText = "{0:hh\\:mm\\:ss\\.fff} ({1:N2} seconds)" -f $elapsed, $elapsed.TotalSeconds
         } catch {
             Write-Log -Message ("Failed to format setup.exe duration. Error: {0}" -f $_) -Level "WARN"
             $durationText = "$($elapsed)"
