@@ -140,7 +140,9 @@ function Invoke-TimedIsoDownload {
         $elapsed = $stopwatch.Elapsed
         $script:IsoDownloadDuration = $elapsed
         try {
-            $ts = [TimeSpan]$elapsed
+            $ts = $null
+            [void][TimeSpan]::TryParse($elapsed.ToString(), [ref]$ts)
+            if (-not $ts) { $ts = [TimeSpan]$elapsed }
             $durationText = "{0:hh\\:mm\\:ss\\.fff} ({1:N2} seconds)" -f $ts, $ts.TotalSeconds
         } catch {
             Write-Log -Message ("Failed to format ISO download duration. Error: {0}" -f $_) -Level "WARN"
@@ -184,7 +186,9 @@ function Invoke-TimedSetupExecution {
         $elapsed = $stopwatch.Elapsed
         $script:SetupExecutionDuration = $elapsed
         try {
-            $ts = [TimeSpan]$elapsed
+            $ts = $null
+            [void][TimeSpan]::TryParse($elapsed.ToString(), [ref]$ts)
+            if (-not $ts) { $ts = [TimeSpan]$elapsed }
             $durationText = "{0:hh\\:mm\\:ss\\.fff} ({1:N2} seconds)" -f $ts, $ts.TotalSeconds
         } catch {
             Write-Log -Message ("Failed to format setup.exe duration. Error: {0}" -f $_) -Level "WARN"

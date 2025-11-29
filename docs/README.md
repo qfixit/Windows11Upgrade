@@ -65,36 +65,30 @@ cd .\Windows11Upgrade
 
 # Changelog
 
-## 2.5.1 - 2025-12-09
+## 2.5.7 - 2025-11-28
+- Hardened duration formatting (TryParse) for ISO/setup phases and execution summaries to eliminate `TimeSpan` string errors.
+- Reboot reminder tasks now launch the toast with a hidden PowerShell window and more resilient `privateRoot` resolution/logging.
+- RMM config emitter rewritten with token replacement to avoid malformed `SetupExeArguments`, always overwrites the resolved config, and Version.txt added for current version/date.
+
+## 2.5.6 - 2025-11-28
+- Embedded changelog into README and removed standalone CHANGELOG.md; Version.txt introduced to track version/date.
+- Download helper now deletes the ZIP after extraction; clarified local toast asset expectations.
+
+## 2.5.5 - 2025-11-28
+- RMM config supports direct parameter overrides (ISO URL/hash, DynamicUpdate, AutoReboot, reminder times) and local toast assets; emits the resolved UpgradeConfig automatically.
+- Normalized header dates/author remarks across scripts.
+
+## 2.5.4 - 2025-11-28
+- Default AutoReboot now false (adds `/noreboot`), DynamicUpdate toggleable, local toast assets favored, and entry script consolidated to `Windows11Upgrade.ps1`.
+
+## 2.5.1 - 2025-11-28
 - Hardened ISO/setup duration logging so formatting errors can no longer abort staging after a successful download; duration strings now fall back gracefully while still recording warnings.
 - Ensured ISO downloads proceed to hash validation/caching even if duration formatting misbehaves, preventing false `Failed to download ISO` interruptions once media is present.
 
-## 2.5.0 - 2025-12-07
+## 2.5.0 - 2025-11-28
 - Split the upgrade script into modular helpers under `Private/` (`Toast-Notification`, `ISO Download`, `Post-Upgrade Cleanup`) with the entry point now in `Public/Windows11Upgrade_v2.5.0.ps1` for zip-based deployment.
 - Added early module-load validation so staging aborts with a clear error if any helper script is missing, keeping the new zip layout predictable for RMM delivery.
 - Each helper script now carries version/date headers plus example test commands, and the cleanup module offers a `-ListCleanupTargets` preview to validate post-upgrade tidy-up safely.
-
-## 2.4.7 - 2025-12-06
-- Rebuilt toast delivery to match the earlier working flow: recreate the VBS launcher, build a single quoted `/TR` string (`"wscript.exe" "RunHidden_*.vbs" "Toast-*.ps1"`), and invoke `schtasks.exe` directly (delete/create/run) so download toasts no longer hit argument-binding errors. Kept the DEBUG logs for paths and schtasks commands/outputs to aid troubleshooting.
-
-## 2.4.6 - 2025-12-05
-- Added a `DEBUG` log level and detailed toast diagnostics (path existence/metadata, schtasks commands, create/run outputs, action command) to pinpoint “file not found” causes when download toasts fail.
-- Simplified toast preparation to use only script/VBS prerequisites and log their presence explicitly before scheduling the task.
-
-## 2.4.5 - 2025-12-04
-- Reverted toast launcher to the simpler v2.3.4 model: recreate the VBS launcher per toast, launch via `wscript.exe` with an immediate schtasks trigger, and drop the extra launcher parameter handling to avoid “file not found” errors.
-- Toast failure logging now includes each expected path (script/vbs/wscript/powershell) to pinpoint missing files.
-
-## 2.4.4 - 2025-12-03
-- Fixed toast launcher paths to use the correct `System32\wscript.exe`/PowerShell paths (no extra backslashes) so scheduled toast tasks no longer throw “system cannot find the file specified.”
-
-## 2.4.3 - 2025-12-03
-- Restored the hidden VBScript launcher and now pass both the toast script and launcher paths into the scheduled task to stop “system cannot find the file specified” failures when firing the download toast.
-- Prepare toast now returns both assets and the launcher so the BITS start toast reuses the same verified paths.
-
-## 2.4.2 - 2025-12-02
-- Pre-created the download toast helper (including cached hero/logo assets) before firing the first notification so the kickoff toast no longer fails when assets aren’t ready.
-- Toast templates now honor existing cached images instead of re-downloading on every run, reducing download toast flakiness when connectivity is limited.
 
 ## 2.4.1 - 2025-11-27
 - Fixed toast delivery failures (“system cannot find the file specified”) by writing helper scripts to stable paths, pre-creating `C:\Temp\ToastAssets`, and invoking toasts via absolute `wscript.exe`/`powershell.exe` paths with richer schtasks logging when creation/run fails.
@@ -103,6 +97,28 @@ cd .\Windows11Upgrade
 
 ## 2.4.0 - 2025-11-27
 - Added a download-in-progress toast that fires from inside the ISO download routine so users are notified whenever a new ISO transfer starts, with failures logged as warnings only.
+
+## 2.4.7 - 2025-11-06
+- Rebuilt toast delivery to match the earlier working flow: recreate the VBS launcher, build a single quoted `/TR` string (`"wscript.exe" "RunHidden_*.vbs" "Toast-*.ps1"`), and invoke `schtasks.exe` directly (delete/create/run) so download toasts no longer hit argument-binding errors. Kept the DEBUG logs for paths and schtasks commands/outputs to aid troubleshooting.
+
+## 2.4.6 - 2025-11-05
+- Added a `DEBUG` log level and detailed toast diagnostics (path existence/metadata, schtasks commands, create/run outputs, action command) to pinpoint “file not found” causes when download toasts fail.
+- Simplified toast preparation to use only script/VBS prerequisites and log their presence explicitly before scheduling the task.
+
+## 2.4.5 - 2025-11-04
+- Reverted toast launcher to the simpler v2.3.4 model: recreate the VBS launcher per toast, launch via `wscript.exe` with an immediate schtasks trigger, and drop the extra launcher parameter handling to avoid “file not found” errors.
+- Toast failure logging now includes each expected path (script/vbs/wscript/powershell) to pinpoint missing files.
+
+## 2.4.4 - 2025-11-03
+- Fixed toast launcher paths to use the correct `System32\wscript.exe`/PowerShell paths (no extra backslashes) so scheduled toast tasks no longer throw “system cannot find the file specified.”
+
+## 2.4.3 - 2025-11-03
+- Restored the hidden VBScript launcher and now pass both the toast script and launcher paths into the scheduled task to stop “system cannot find the file specified” failures when firing the download toast.
+- Prepare toast now returns both assets and the launcher so the BITS start toast reuses the same verified paths.
+
+## 2.4.2 - 2025-11-02
+- Pre-created the download toast helper (including cached hero/logo assets) before firing the first notification so the kickoff toast no longer fails when assets aren’t ready.
+- Toast templates now honor existing cached images instead of re-downloading on every run, reducing download toast flakiness when connectivity is limited.
 
 ## 2.3.1 - 2025-11-06
 - Updated the upgrade script metadata and expanded logging so every pre/post reboot action, including reboot initiator details (Event 1074), is written to `C:\Windows11UpgradeLog.txt`.
