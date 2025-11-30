@@ -1,7 +1,7 @@
 # Scheduled Task Helpers
-# Version 2.5.8
+# Version 2.5.9
 # Date 11/29/2025
-# Author Remark: Quintin Sheppard
+# Author: Quintin Sheppard
 # Summary: Registers/cleans reboot reminder tasks and post-reboot validation tasks.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\ScheduledTasks.ps1'; Register-RebootReminderTasks"
 
@@ -182,7 +182,7 @@ function Register-PostRebootValidationTask {
         "/Create",
         "/TN", $postRebootValidationTaskName,
         "/TR", $command,
-        "/SC", "ONSTART",
+        "/SC", "ONLOGON",
         "/RL", "HIGHEST",
         "/F",
         "/RU", "SYSTEM"

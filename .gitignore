@@ -1,2 +1,3 @@
 # Ignore extracted zips and working copies
 /Windows11Upgrade.zip
+/config.json

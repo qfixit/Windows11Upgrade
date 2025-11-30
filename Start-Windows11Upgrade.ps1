@@ -1,12 +1,29 @@
 # Start-Windows11Upgrade Orchestration
-# Version 2.5.8
-# Date 11/29/2025
-# Author Remark: Quintin Sheppard
+# Version 2.6.0
+# Date 11/30/2025
+# Author: Quintin Sheppard
 # Summary: Implements the Expected Workflow to stage the Windows 11 upgrade, handle reboots, and self-heal failures.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\Start-Windows11Upgrade.ps1'; Start-Windows11Upgrade"
 
 function Start-Windows11Upgrade {
 try {
+    $autoRebootPending = $false
+
+    function Invoke-AutoReboot {
+        param([bool]$ShouldReboot)
+
+        if (-not $AutoReboot -or -not $ShouldReboot) {
+            return
+        }
+
+        Write-Log -Message "AutoReboot enabled; initiating immediate restart to continue Windows 11 upgrade." -Level "INFO"
+        try {
+            Start-Process -FilePath "shutdown.exe" -ArgumentList '/r /t 0 /c "Windows 11 upgrade staged; rebooting now."' -WindowStyle Hidden -ErrorAction Stop
+        } catch {
+            Write-Log -Message ("Failed to trigger auto reboot. Error: {0}" -f $_) -Level "ERROR"
+        }
+    }
+
     Write-Log "Windows 11 25H2 upgrade script started."
 
     if (-not (Ensure-SentinelAgentCompatible)) {
@@ -47,6 +64,7 @@ try {
         Write-Log -Message "Windows 11 already detected on this device." -Level "INFO"
         Invoke-PostUpgradeCleanup -State $state
         Complete-Execution -Message "Windows 11 25H2 upgrade script finished."
+        Invoke-AutoReboot -ShouldReboot $autoRebootPending
         return
     }
 
@@ -57,6 +75,9 @@ try {
     if ($state -and $state.Status -eq "PendingReboot") {
         $pendingStateDetected = $true
         $needsStaging = $false
+        if ($AutoReboot) {
+            $autoRebootPending = $true
+        }
         Write-Log -Message "Pending reboot state detected from previous run." -Level "INFO"
 
         $deviceRestartedAfterStaging = $false
@@ -106,6 +127,9 @@ try {
 
             if ($stagingResult) {
                 Clear-FailureMarker
+                if ($AutoReboot) {
+                    $autoRebootPending = $true
+                }
 
                 $stateToSave = [pscustomobject]@{
                     Status            = "PendingReboot"
@@ -183,6 +207,7 @@ try {
     }
 
     Complete-Execution -Message "Windows 11 upgrade script finished."
+    Invoke-AutoReboot -ShouldReboot $autoRebootPending
 } catch {
     Write-Log -Message "Windows 11 upgrade script encountered an unexpected interruption or error: $_" -Level "ERROR"
     $failureMarked = $false

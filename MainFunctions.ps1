@@ -1,7 +1,7 @@
 # Core Utilities & Progress Helpers
-# Version 2.5.8
-# Date 11/29/2025
-# Author Remark: Quintin Sheppard
+# Version 2.6.0
+# Date 11/30/2025
+# Author: Quintin Sheppard
 # Summary: Common logging, directory creation, and progress/summary helpers used across the upgrade workflow.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\MainFunctions.ps1'; Write-Log 'hello world'"
 
@@ -52,7 +52,7 @@ function Write-Log {
         "ERROR"   { Write-Error $logMessage }
         "WARN"    { Write-Warning $logMessage }
         "VERBOSE" { Write-Verbose $logMessage }
-        default   { Write-Host $logMessage }
+        default   { Write-Information -MessageData $logMessage -InformationAction Continue }
     }
 
     if ($Level -ne "VERBOSE") {
@@ -66,20 +66,6 @@ function Ensure-Directory {
     if (-not (Test-Path -Path $Path)) {
         New-Item -Path $Path -ItemType Directory -Force | Out-Null
         Write-Log -Message "Created directory $Path" -Level "VERBOSE"
-    }
-}
-
-function Write-LastRebootEventInfo {
-    try {
-        $lastRebootEvent = Get-WinEvent -LogName System -FilterHashtable @{ Id = 1074 } -MaxEvents 1 -ErrorAction Stop
-        if ($lastRebootEvent) {
-            $message = ($lastRebootEvent.Message -replace "`r?`n", " ").Trim()
-            Write-Log -Message ("Last reboot recorded by Event ID 1074 at {0:u}: {1}" -f $lastRebootEvent.TimeCreated, $message) -Level "INFO"
-        } else {
-            Write-Log -Message "No Event ID 1074 reboot entries found in the System log." -Level "WARN"
-        }
-    } catch {
-        Write-Log -Message "Unable to read last reboot information. Error: $_" -Level "WARN"
     }
 }
 

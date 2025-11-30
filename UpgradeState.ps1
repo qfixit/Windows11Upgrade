@@ -1,7 +1,7 @@
 # State & Marker Helpers
-# Version 2.5.8
+# Version 2.5.9
 # Date 11/29/2025
-# Author Remark: Quintin Sheppard
+# Author: Quintin Sheppard
 # Summary: Handles upgrade markers, state files, and failure tracking.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Private\\State\\UpgradeState.ps1'; Write-FailureMarker 'test reason'"
 

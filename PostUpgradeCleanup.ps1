@@ -1,6 +1,7 @@
 # Post-Upgrade Cleanup (RunOnce/Task Target)
-# Version 2.5.8
-# Date 11/29/2025
+# Version 2.6.0
+# Date 11/30/2025
+# Author: Quintin Sheppard
 # Summary: Post-reboot cleanup that verifies Windows 11, removes reminder/validation tasks, and deletes the staging folder with retries.
 
 [CmdletBinding()]
@@ -10,17 +11,12 @@ $ErrorActionPreference = 'Stop'
 
 # Defaults (kept local for robustness)
 $stateDirectory = "C:\Temp\WindowsUpdate"
-$logFilePrimary = "C:\Windows11UpgradeLog.txt"
-$logFileDevice  = "C:\Windows11UpgradeLog-$($env:COMPUTERNAME).txt"
+$logFile = "C:\Windows11UpgradeLog.txt"
 $reminderTaskNames = @("Win11_RebootReminder_1", "Win11_RebootReminder_2")
 $postRebootValidationTaskName = "Win11_PostRebootValidation"
 $postRebootValidationRunOnce  = "Win11_PostRebootValidation_RunOnce"
 
 # Resolve log target and ensure it exists
-$logFile = $logFilePrimary
-if (-not (Test-Path -Path $logFilePrimary) -and (Test-Path -Path $logFileDevice)) {
-    $logFile = $logFileDevice
-}
 if (-not (Test-Path -Path $logFile)) {
     try { New-Item -Path $logFile -ItemType File -Force | Out-Null } catch {}
 }
@@ -38,7 +34,7 @@ function Write-Log {
         "ERROR"   { Write-Error $line }
         "WARN"    { Write-Warning $line }
         "VERBOSE" { Write-Verbose $line }
-        default   { Write-Host $line }
+        default   { Write-Information -MessageData $line -InformationAction Continue }
     }
     if ($Level -ne "VERBOSE") { Write-Verbose $line }
 }
@@ -73,6 +69,21 @@ function Remove-TasksAndRunOnce {
     }
 }
 
+function Ensure-RunOnceRetry {
+    try {
+        $powershellExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\WindowsPowerShell\v1.0\powershell.exe"
+        $runOnceKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"
+        $runOnceName = if ($postRebootValidationRunOnce) { $postRebootValidationRunOnce } else { "Win11_PostCleanup_Retry" }
+        $scriptPath = if ($script:CurrentScriptPath) { $script:CurrentScriptPath } else { Join-Path -Path $stateDirectory -ChildPath "Windows11Upgrade.ps1" }
+        $cmd = ('"{0}" -ExecutionPolicy Bypass -NoProfile -File "{1}"' -f $powershellExe, $scriptPath)
+        New-Item -Path $runOnceKey -Force | Out-Null
+        Set-ItemProperty -Path $runOnceKey -Name $runOnceName -Value $cmd -Force
+        Write-Log -Message ("Cleanup retry registered via RunOnce {0} because {1} still exists." -f $runOnceName, $stateDirectory) -Level "WARN"
+    } catch {
+        Write-Log -Message ("Failed to register RunOnce retry for cleanup. Error: {0}" -f $_) -Level "ERROR"
+    }
+}
+
 try {
     Write-Log -Message "Post-reboot cleanup started." -Level "INFO"
 
@@ -83,8 +94,8 @@ try {
     }
 
     # Attempt folder removal up to 3 times
+    $removed = $false
     if (Test-Path -Path $stateDirectory -PathType Container) {
-        $removed = $false
         foreach ($attempt in 1..3) {
             try {
                 Remove-Item -Path $stateDirectory -Recurse -Force -ErrorAction Stop
@@ -102,10 +113,16 @@ try {
         }
     } else {
         Write-Log -Message ("State directory {0} not found; nothing to remove." -f $stateDirectory) -Level "VERBOSE"
+        $removed = $true
     }
 
-    Remove-TasksAndRunOnce
-    Write-Log -Message "Post-reboot cleanup complete. Log file retained at $logFile." -Level "INFO"
+    if ($removed -or -not (Test-Path -Path $stateDirectory -PathType Container)) {
+        Remove-TasksAndRunOnce
+        Write-Log -Message "Post-reboot cleanup complete. Log file retained at $logFile." -Level "INFO"
+    } else {
+        Ensure-RunOnceRetry
+        Write-Log -Message ("State directory {0} still present; validation task retained for retry." -f $stateDirectory) -Level "WARN"
+    }
 } catch {
     Write-Log -Message "Post-reboot cleanup encountered an error: $_" -Level "ERROR"
     throw

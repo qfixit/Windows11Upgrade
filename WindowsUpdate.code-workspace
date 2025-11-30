@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+	"powershell.scriptAnalysis.settingsPath": ".vscode/PSScriptAnalyzerSettings.psd1",
+	"chatgpt.runCodexInWindowsSubsystemForLinux": true // (Optional: if you have a custom settings file)
+	}
+}

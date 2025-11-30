@@ -1,5 +1,5 @@
 # Windows 11 Installation Complete Toast Notification
-# Version 2.5.8
+# Version 2.5.9
 # Date 11/29/2025
 # Author Remark: Quintin Sheppard
 
