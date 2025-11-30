@@ -154,12 +154,13 @@ function Set-UpgradeConfig {
         MoSetupVolatileKey           = "HKLM:\SYSTEM\Setup\MoSetup\Volatile"
 
         PostRebootValidationTaskName = "Win11_PostRebootValidation"
+        PostRebootValidationRunOnce  = "Win11_PostRebootValidation_RunOnce"
         ReminderTaskNames            = @("Win11_RebootReminder_1", "Win11_RebootReminder_2")
         RebootReminder1Time          = $resolvedRebootReminder1
         RebootReminder2Time          = $resolvedRebootReminder2
         RebootReminderScript         = "C:\Temp\WindowsUpdate\RebootReminderNotification.ps1"
         RebootReminderVbs            = "C:\Temp\WindowsUpdate\RunHiddenReminder.vbs"
-        PostRebootScriptPath         = "C:\Temp\WindowsUpdate\Windows11Upgrade_PostReboot.ps1"
+        PostRebootScriptPath         = "C:\Temp\WindowsUpdate\Windows11Upgrade.ps1"
 
         ToastAssetsRoot              = $resolvedToastAssetsRoot
         ToastHeroImage               = $resolvedToastHeroImage
@@ -234,7 +235,7 @@ function Set-UpgradeConfig {
         RebootReminder2Time          = "__REM2__"
         RebootReminderScript         = "C:\Temp\WindowsUpdate\RebootReminderNotification.ps1"
         RebootReminderVbs            = "C:\Temp\WindowsUpdate\RunHiddenReminder.vbs"
-        PostRebootScriptPath         = "C:\Temp\WindowsUpdate\Windows11Upgrade_PostReboot.ps1"
+        PostRebootScriptPath         = "C:\Temp\WindowsUpdate\Windows11Upgrade.ps1"
 
         ToastAssetsRoot              = "__ASSETROOT__"
         ToastHeroImage               = "__HERO__"
