@@ -34,12 +34,13 @@ function Set-UpgradeConfig {
 
         # Task scheduling / reminders
         PostRebootValidationTaskName = "Win11_PostRebootValidation"                           # task that reruns after reboot
+        PostRebootValidationRunOnce  = "Win11_PostRebootValidation_RunOnce"                   # RunOnce fallback key to rerun after reboot
         ReminderTaskNames            = @("Win11_RebootReminder_1", "Win11_RebootReminder_2")  # reboot reminder task names
         RebootReminder1Time          = "11:00"                                                # first reboot reminder time
         RebootReminder2Time          = "16:00"                                                # second reboot reminder time
         RebootReminderScript         = "C:\Temp\WindowsUpdate\RebootReminderNotification.ps1" # reminder toast helper script
         RebootReminderVbs            = "C:\Temp\WindowsUpdate\RunHiddenReminder.vbs"          # VBS launcher for reminder toast
-        PostRebootScriptPath         = "C:\Temp\WindowsUpdate\Windows11Upgrade_PostReboot.ps1" # persisted script for post-reboot validation
+        PostRebootScriptPath         = "C:\Temp\WindowsUpdate\Windows11Upgrade.ps1" # post-reboot validation script (reuse main orchestrator)
 
         # Toast configuration
         ToastAssetsRoot              = "C:\Temp\WindowsUpdate\Toast-Notification"                                  # cached toast assets

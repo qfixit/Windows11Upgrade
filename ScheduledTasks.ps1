@@ -206,6 +206,18 @@ function Register-PostRebootValidationTask {
     } else {
         Write-Log -Message "Post-reboot validation task registered to rerun the script after the next restart." -Level "INFO"
     }
+
+    # RunOnce fallback in case Task Scheduler deletes/blocks the task before reboot.
+    if ($postRebootValidationRunOnce) {
+        try {
+            $runOnceKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"
+            New-Item -Path $runOnceKey -Force | Out-Null
+            Set-ItemProperty -Path $runOnceKey -Name $postRebootValidationRunOnce -Value $command -Force
+            Write-Log -Message ("Registered RunOnce fallback {0} to execute post-reboot validation." -f $postRebootValidationRunOnce) -Level "VERBOSE"
+        } catch {
+            Write-Log -Message ("Failed to register RunOnce fallback for post-reboot validation. Error: {0}" -f $_) -Level "WARN"
+        }
+    }
 }
 
 function Remove-PostRebootValidationTask {
@@ -217,12 +229,30 @@ function Remove-PostRebootValidationTask {
     }
     Write-Log -Message "Removed post-reboot validation task (if it existed)." -Level "VERBOSE"
 
-    if (Test-Path -Path $postRebootScriptPath) {
+    if ($postRebootValidationRunOnce) {
         try {
-            Remove-Item -Path $postRebootScriptPath -Force -ErrorAction Stop
-            Write-Log -Message "Removed persisted post-reboot script at $postRebootScriptPath." -Level "VERBOSE"
+            $runOnceKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"
+            if (Test-Path -Path $runOnceKey) {
+                Remove-ItemProperty -Path $runOnceKey -Name $postRebootValidationRunOnce -ErrorAction Stop
+                Write-Log -Message ("Removed RunOnce fallback {0}." -f $postRebootValidationRunOnce) -Level "VERBOSE"
+            }
         } catch {
-            Write-Log -Message "Failed to remove persisted post-reboot script. Error: $_" -Level "WARN"
+            Write-Log -Message ("Failed to remove RunOnce fallback {0}. Error: {1}" -f $postRebootValidationRunOnce, $_) -Level "WARN"
+        }
+    }
+
+    if (Test-Path -Path $postRebootScriptPath) {
+        $shouldRemoveScript = $true
+        if ($script:CurrentScriptPath -and ([System.IO.Path]::GetFullPath($postRebootScriptPath) -eq [System.IO.Path]::GetFullPath($script:CurrentScriptPath))) {
+            $shouldRemoveScript = $false
+        }
+        if ($shouldRemoveScript) {
+            try {
+                Remove-Item -Path $postRebootScriptPath -Force -ErrorAction Stop
+                Write-Log -Message "Removed persisted post-reboot script at $postRebootScriptPath." -Level "VERBOSE"
+            } catch {
+                Write-Log -Message "Failed to remove persisted post-reboot script. Error: $_" -Level "WARN"
+            }
         }
     }
 }

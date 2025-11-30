@@ -30,7 +30,7 @@
 ## Key Paths & Artifacts
 - ISO: `C:\Temp\WindowsUpdate\Windows11_25H2.iso` (hash cache `.iso.sha256`).
 - Setup logs copied to `C:\Temp\WindowsUpdate\SetupLogs`.
-- Post-reboot script: `C:\Temp\WindowsUpdate\Windows11Upgrade_PostReboot.ps1`.
+- Post-reboot script: `C:\Temp\WindowsUpdate\Windows11Upgrade.ps1` (reuses the main orchestrator).
 - Toast assets: `C:\Temp\Windows11Upgrade\Toast-Notification\hero.jpg` / `logo.jpg`.
 
 ## Tasks & Notifications
@@ -61,10 +61,16 @@ cd .\Windows11Upgrade
 - Do not rename marker files (`PendingReboot.txt`, `UpgradeFailed.txt`); monitors depend on them.
 - Ensure `hero.jpg` and `logo.jpg` are present in the toast folder before scheduling reminders.
 - Successful post-upgrade cleanup removes `C:\Temp\WindowsUpdate` (including the staged scripts) and archives setup logs; only the main log remains.
+- Post-reboot validation now has a RunOnce fallback in case Task Scheduler deletes/blocks the scheduled task before it runs.
+- Post-reboot cleanup/validation task is only removed after the state directory is gone; if `C:\Temp\WindowsUpdate` remains, the task stays to force cleanup on the next run.
 
 ---
 
 # Changelog
+
+## 2.5.9 - 2025-11-29
+- Post-reboot validation now reuses `Windows11Upgrade.ps1` (no separate _PostReboot copy) and avoids deleting the primary orchestrator during task cleanup.
+- Post-upgrade cleanup tolerates missing state properties, sets `CompletedOn` safely, and retains the validation task if the staging folder still exists.
 
 ## 2.5.8 - 2025-11-29
 - Removed unused `C:\Temp\ToastAssets` creation and added cleanup coverage for any remnants.
