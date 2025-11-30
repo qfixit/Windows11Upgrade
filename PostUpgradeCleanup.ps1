@@ -1,5 +1,5 @@
 # Post-Upgrade Cleanup (RunOnce/Task Target)
-# Version 2.5.10
+# Version 2.5.8
 # Date 11/29/2025
 # Summary: Post-reboot cleanup that verifies Windows 11, removes reminder/validation tasks, and deletes the staging folder with retries.
 
