@@ -1,6 +1,6 @@
 # Windows 11 Download Started Toast Notification
-# Version 2.5.1
-# Date 11/28/2025
+# Version 2.5.9
+# Date 11/29/2025
 # Author Remark: Quintin Sheppard
 
 [CmdletBinding()]

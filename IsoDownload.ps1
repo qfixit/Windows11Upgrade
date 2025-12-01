@@ -1,58 +1,11 @@
 # ISO Download and Setup Helpers
-# Version 2.5.1
-# Date 11/28/2025
-# Author Remark: Quintin Sheppard
+# Version 2.6.0
+# Date 11/30/2025
+# Author: Quintin Sheppard
 # Summary: Disk space checks, ISO health/hash validation, BITS download wrapper, and setup.exe staging helpers for the Windows 11 upgrade.
 # Example test (download only): powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\Windows11Upgrade\ISO Download\IsoDownload.ps1'; Invoke-TimedIsoDownload -SourceUrl 'https://example.com/test.iso' -DestinationPath 'C:\Temp\WindowsUpdate\Test.iso'"
 
 param()
-
-if (-not (Get-Command -Name Write-Log -ErrorAction SilentlyContinue)) {
-    function Write-Log {
-        param([string]$Message, [string]$Level = "INFO")
-        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        Write-Host "$timestamp [$Level] $Message"
-    }
-}
-
-if (-not (Get-Command -Name Write-FailureMarker -ErrorAction SilentlyContinue)) {
-    function Write-FailureMarker {
-        param([string]$Reason)
-        Write-Log -Message "Failure marker (test stub): $Reason" -Level "WARN"
-    }
-}
-
-if (-not (Get-Command -Name Clear-FailureMarker -ErrorAction SilentlyContinue)) {
-    function Clear-FailureMarker {}
-}
-
-if (-not (Get-Command -Name Ensure-Directory -ErrorAction SilentlyContinue)) {
-    function Ensure-Directory {
-        param([string]$Path)
-        if (-not (Test-Path -Path $Path)) {
-            New-Item -Path $Path -ItemType Directory -Force | Out-Null
-        }
-    }
-}
-
-if (-not $stateDirectory) {
-    $stateDirectory = "C:\Temp\WindowsUpdate"
-}
-
-if (-not $isoFilePath) {
-    $isoFilePath = Join-Path -Path $stateDirectory -ChildPath "Windows11_25H2.iso"
-}
-
-if (-not $isoHashCacheFile) {
-    $isoHashCacheFile = Join-Path -Path $stateDirectory -ChildPath "Windows11_25H2.iso.sha256"
-}
-
-if (-not $minimumIsoSizeBytes) {
-    $minimumIsoSizeBytes = [int64](4 * 1GB)
-}
-if (-not $privateRoot) {
-    $privateRoot = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
-}
 
 function Invoke-TimedIsoDownload {
     param(
@@ -146,7 +99,6 @@ function Invoke-TimedIsoDownload {
             Write-Log -Message ("Failed to format ISO download duration. Error: {0}" -f $_) -Level "WARN"
             $durationText = "$($elapsed)"
         }
-        Write-Log -Message ("ISO download duration: {0}" -f $durationText) -Level "INFO"
     }
 }
 
@@ -184,7 +136,11 @@ function Invoke-TimedSetupExecution {
         $elapsed = $stopwatch.Elapsed
         $script:SetupExecutionDuration = $elapsed
         try {
-            $durationText = "{0:hh\\:mm\\:ss\\.fff} ({1:N2} seconds)" -f $elapsed, $elapsed.TotalSeconds
+            if ($elapsed) {
+                $durationText = ("{0} ({1} seconds)" -f $elapsed.ToString("hh':'mm':'ss'.'fff", [System.Globalization.CultureInfo]::InvariantCulture), [math]::Round($elapsed.TotalSeconds, 2))
+            } else {
+                throw "Elapsed duration is null."
+            }
         } catch {
             Write-Log -Message ("Failed to format setup.exe duration. Error: {0}" -f $_) -Level "WARN"
             $durationText = "$($elapsed)"

@@ -1,76 +1,152 @@
 # Upgrade Configuration
-# Version 2.5.1
-# Date 11/28/2025
-# Author Remark: Quintin Sheppard
-# Summary: Centralized configuration for paths, URLs, hashes, toast assets, and logging/state settings.
-# Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\UpgradeConfig.ps1'; $cfg = Set-UpgradeConfig; $cfg.LogFile"
+# Version 2.6.0
+# Date 11/30/2025
+# Author: Quintin Sheppard
+# Summary: Loads configuration from JSON (C:\Temp\WindowsUpdate\config.json with fallback to config.default.json) and exports it for the upgrade workflow.
+# Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\UpgradeConfig.ps1'; $cfg = Set-UpgradeConfig; $cfg.BaseLogFile"
+
+function Resolve-Value {
+    param(
+        $Raw,
+        $Default
+    )
+
+    if ($null -eq $Raw) {
+        return $Default
+    }
+
+    if ($Raw -is [string] -and $Raw.StartsWith("@") -and $Raw.EndsWith("@")) {
+        return $Default
+    }
+
+    if ($Default -is [bool]) {
+        if ($Raw -is [bool]) { return $Raw }
+        $parsed = $null
+        if ([bool]::TryParse($Raw.ToString(), [ref]$parsed)) { return [bool]$parsed }
+        return $Default
+    }
+
+    if ($Default -is [int64]) {
+        $number = $null
+        if ([int64]::TryParse($Raw.ToString(), [ref]$number)) { return $number }
+        return $Default
+    }
+
+    if ($Default -is [version]) {
+        try { return [version]$Raw } catch { return $Default }
+    }
+
+    if ($Default -is [System.Collections.IEnumerable] -and -not ($Default -is [string])) {
+        if ($Raw -is [System.Collections.IEnumerable] -and -not ($Raw -is [string])) {
+            $items = @()
+            foreach ($item in $Raw) { $items += Resolve-Value -Raw $item -Default ($Default | Select-Object -First 1) }
+            return $items
+        }
+        return $Default
+    }
+
+    if ($Default -is [hashtable] -or $Default -is [pscustomobject]) {
+        $result = [ordered]@{}
+        $rawProps = if ($Raw -is [pscustomobject]) { $Raw.PSObject.Properties } elseif ($Raw -is [hashtable]) { $Raw.GetEnumerator() } else { @() }
+        $rawLookup = @{}
+        foreach ($p in $rawProps) { $rawLookup[$p.Name] = $p.Value }
+        foreach ($prop in ($Default.PSObject.Properties)) {
+            $rawValue = $null
+            if ($rawLookup.ContainsKey($prop.Name)) { $rawValue = $rawLookup[$prop.Name] }
+            $result[$prop.Name] = Resolve-Value -Raw $rawValue -Default $prop.Value
+        }
+        return [pscustomobject]$result
+    }
+
+    return $Raw
+}
+
+function Get-ConfigData {
+    param(
+        [string]$PrimaryPath,
+        [string]$FallbackPath
+    )
+
+    if (-not (Test-Path -Path $FallbackPath -PathType Leaf)) {
+        throw ("Fallback configuration missing at {0}" -f $FallbackPath)
+    }
+
+    $defaultConfig = Get-Content -Path $FallbackPath -Raw | ConvertFrom-Json
+    $rawConfig = $defaultConfig
+
+    if (Test-Path -Path $PrimaryPath -PathType Leaf) {
+        try {
+            $rawConfig = Get-Content -Path $PrimaryPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            Write-Warning ("Unable to read primary configuration at {0}. Using defaults. Error: {1}" -f $PrimaryPath, $_)
+            $rawConfig = $defaultConfig
+        }
+    } else {
+        Write-Verbose ("Primary configuration not found at {0}; using default configuration." -f $PrimaryPath)
+    }
+
+    $resolved = Resolve-Value -Raw $rawConfig -Default $defaultConfig
+    return $resolved
+}
+
+function Build-SetupArguments {
+    param(
+        [string]$BaseArguments,
+        [bool]$DynamicUpdateEnabled
+    )
+
+    $dynamicPart = if ($DynamicUpdateEnabled) { "/DynamicUpdate Enable" } else { "/DynamicUpdate Disable" }
+    $args = "$BaseArguments $dynamicPart /noreboot"
+    return $args.Trim()
+}
 
 function Set-UpgradeConfig {
-    $config = [ordered]@{
-        # Logging
-        BaseLogFile                  = "C:\Windows11UpgradeLog.txt"                            # primary log target
-        ComputerSpecificLogFile      = "C:\Windows11UpgradeLog-$($env:COMPUTERNAME).txt"      # fallback log used if the primary was renamed
-        LogFile                      = $null                                                  # resolved log file (set below)
-        LoggingLevel                 = "INFO"                                                 # default console/log verbosity
+    $scriptRoot = if ($PSScriptRoot) { $PSScriptRoot } elseif ($PSCommandPath) { Split-Path -Path $PSCommandPath -Parent } else { (Get-Location).ProviderPath }
+    $primaryConfigPath = "C:\Temp\WindowsUpdate\config.json"
+    $fallbackConfigPath = Join-Path -Path $scriptRoot -ChildPath "config.default.json"
 
-        # State & markers
-        StateDirectory               = "C:\Temp\WindowsUpdate"                                # root for sentinels, iso, tasks, and temp scripts
-        UpgradeStateFiles            = @{
-            ScriptRunning = "C:\Temp\WindowsUpdate\ScriptRunning.txt"                         # active run sentinel
-            PendingReboot = "C:\Temp\WindowsUpdate\PendingReboot.txt"                         # staging complete sentinel
-        }
-        FailureMarker                = "C:\Temp\WindowsUpdate\UpgradeFailed.txt"              # marker watched by RMM
+    $config = Get-ConfigData -PrimaryPath $primaryConfigPath -FallbackPath $fallbackConfigPath
 
-        # ISO download/validation
-        Windows11IsoUrl              = "example.com*" # ISO download source
-        ExpectedIsoSha256            = "D141F6030FED50F75E2B03E1EB2E53646C4B21E5386047CB860AF5223F102A32"                      # expected ISO hash
-        IsoFilePath                  = "C:\Temp\WindowsUpdate\Windows11_25H2.iso"             # staged ISO path
-        IsoHashCacheFile             = "C:\Temp\WindowsUpdate\Windows11_25H2.iso.sha256"      # cached SHA for ISO reuse
-        MinimumIsoSizeBytes          = [int64](4 * 1GB)                                       # sanity check to guard against HTML downloads
-
-        # Setup execution
-        SetupExeArguments            = '/Auto Upgrade /copylogs "{0}" /DynamicUpdate Enable /EULA accept /noreboot /Quiet'     # setup.exe switches; {0}=log path
-        MoSetupVolatileKey           = "HKLM:\SYSTEM\Setup\MoSetup\Volatile"                  # progress tracking registry key
-
-        # Task scheduling / reminders
-        PostRebootValidationTaskName = "Win11_PostRebootValidation"                           # task that reruns after reboot
-        ReminderTaskNames            = @("Win11_RebootReminder_1", "Win11_RebootReminder_2")  # reboot reminder task names
-        RebootReminder1Time          = "11:00"                                                # first reboot reminder time
-        RebootReminder2Time          = "16:00"                                                # second reboot reminder time
-        RebootReminderScript         = "C:\Temp\WindowsUpdate\RebootReminderNotification.ps1" # reminder toast helper script
-        RebootReminderVbs            = "C:\Temp\WindowsUpdate\RunHiddenReminder.vbs"          # VBS launcher for reminder toast
-        PostRebootScriptPath         = "C:\Temp\WindowsUpdate\Windows11Upgrade_PostReboot.ps1" # persisted script for post-reboot validation
-
-        # Toast configuration
-        ToastAssetsRoot              = "C:\Temp\WindowsUpdate\Toast-Notification"                                  # cached toast assets
-        ToastHeroImagePrimaryUrl     = "hero.jpg" # hero image
-        ToastLogoImagePrimaryUrl     = "logo.jpg" # logo image
-        ToastAttributionText         = "Koltiv"                                               # toast attribution
-        ToastHeaderText              = "Windows 11 Upgrade"                                   # toast header/title
-
-        # Compatibility gates
-        MinimumSentinelAgentVersion  = [version]'24.2.2.0'                                    # SentinelOne gating
-    }
-
-    # Resolve log target with computer-specific fallback
     $config.LogFile = $config.BaseLogFile
-    if (-not (Test-Path -Path $config.BaseLogFile) -and (Test-Path -Path $config.ComputerSpecificLogFile)) {
-        $config.LogFile = $config.ComputerSpecificLogFile
+    if ($config.DynamicUpdate -isnot [bool]) {
+        $parsedDynamic = $true
+        if ([bool]::TryParse($config.DynamicUpdate.ToString(), [ref]$parsedDynamic)) {
+            $config.DynamicUpdate = $parsedDynamic
+        }
+    }
+    $config.SetupExeArguments = Build-SetupArguments -BaseArguments $config.SetupExeBaseArguments -DynamicUpdateEnabled $config.DynamicUpdate
+    if ($config.AutoReboot -isnot [bool]) {
+        $parsedAuto = $false
+        if ([bool]::TryParse($config.AutoReboot.ToString(), [ref]$parsedAuto)) {
+            $config.AutoReboot = $parsedAuto
+        }
     }
 
-    # Ensure directories/files exist
-    foreach ($dir in @($config.StateDirectory, $config.ToastAssetsRoot, "C:\Temp\ToastAssets")) {
+    if ($config.UpgradeStateFiles) {
+        $stateFiles = @{}
+        foreach ($entry in $config.UpgradeStateFiles.PSObject.Properties) {
+            $stateFiles[$entry.Name] = $entry.Value
+        }
+        $config.UpgradeStateFiles = $stateFiles
+    }
+
+    try { $config.MinimumSentinelAgentVersion = [version]$config.MinimumSentinelAgentVersion } catch {}
+    if ($config.MinimumIsoSizeBytes -isnot [int64]) {
+        try { $config.MinimumIsoSizeBytes = [int64]$config.MinimumIsoSizeBytes } catch {}
+    }
+
+    foreach ($dir in @($config.StateDirectory, $config.ToastAssetsRoot)) {
         if (-not (Test-Path -Path $dir)) {
             New-Item -Path $dir -ItemType Directory -Force | Out-Null
         }
     }
+
     if (-not (Test-Path -Path $config.LogFile)) {
-        New-Item -Path $config.LogFile -ItemType File -Force | Out-Null
+        try { New-Item -Path $config.LogFile -ItemType File -Force | Out-Null } catch {}
     }
 
-    # Export variables globally for module compatibility
-    foreach ($key in $config.Keys) {
-        Set-Variable -Name $key -Value $config[$key] -Scope Global -Force
+    foreach ($key in $config.PSObject.Properties.Name) {
+        Set-Variable -Name $key -Value $config.$key -Scope Global -Force
     }
 
     return $config

@@ -3,15 +3,15 @@
 ## Overview
 - Stages Windows 11 25H2 from ISO using `setup.exe` with `/Quiet` and optional `/noreboot`.
 - Entry script (modular): `Windows11Upgrade.ps1` loads helpers under the same folder.
-- Logs to `C:\Windows11UpgradeLog.txt` (falls back to `C:\Windows11UpgradeLog-$COMPUTERNAME.txt`).
+- Logs to `C:\Windows11UpgradeLog.txt`.
 - State markers: `C:\Temp\WindowsUpdate\ScriptRunning.txt`, `PendingReboot.txt`, `UpgradeFailed.txt`.
-- Toast assets/scripts live in `Windows11Upgrade\Toast-Notification`; tasks schedule reboot reminders and post-reboot validation.
+- Toast assets/scripts live in `WindowsUpdate\Toast-Notification`; tasks schedule reboot reminders and post-reboot validation.
 
 ## RMM Task Flow (ConnectWise)
-1) Download and extract via `Helper Scripts/Download-Dev.ps1` (targets `C:\Temp\Windows11Upgrade`).
-2) Run `Windows11Upgrade\UpgradeConfig-RMM.ps1` with parameters (example):
+1) Download and extract via `Helper Scripts/Download-Dev.ps1` (targets `C:\Temp\WindowsUpdate`).
+2) Run `WindowsUpdate\UpgradeConfig-RMM.ps1` with parameters (example):
    ```powershell
-   powershell.exe -ExecutionPolicy Bypass -NoProfile -File "C:\Temp\Windows11Upgrade\UpgradeConfig-RMM.ps1" `
+   powershell.exe -ExecutionPolicy Bypass -NoProfile -File "C:\Temp\WindowsUpdate\UpgradeConfig-RMM.ps1" `
      -Windows11IsoUrl @Windows11IsoUrl@ `
      -ISOHash @ISOHash@ `
      -DynamicUpdate @DynamicUpdate@ `
@@ -19,19 +19,19 @@
      -RebootReminder1Time @RebootReminder1Time@ `
      -RebootReminder2Time @RebootReminder2Time@
    ```
-   - Emits `C:\Temp\Windows11Upgrade\UpgradeConfig.ps1` with resolved values (always overwrites).
-   - Defaults: DynamicUpdate=Enable, AutoReboot=False (adds `/noreboot`), reminders 11:00/16:00.
+   - Emits `C:\Temp\WindowsUpdate\config.json` with parameter tokens or supplied values (always overwrites).
+   - Defaults: DynamicUpdate=Enable, AutoReboot=False (setup runs with `/noreboot`; AutoReboot triggers a shutdown at script end), reminders 11:00/16:00.
    - Toast assets expected at `C:\Temp\Windows11Upgrade\Toast-Notification\hero.jpg` and `logo.jpg`.
 3) Run the upgrade orchestrator:
    ```powershell
-   powershell.exe -ExecutionPolicy Bypass -NoProfile -File "C:\Temp\Windows11Upgrade\Windows11Upgrade.ps1"
+   powershell.exe -ExecutionPolicy Bypass -NoProfile -File "C:\Temp\WindowsUpdate\Windows11Upgrade.ps1"
    ```
 
 ## Key Paths & Artifacts
 - ISO: `C:\Temp\WindowsUpdate\Windows11_25H2.iso` (hash cache `.iso.sha256`).
 - Setup logs copied to `C:\Temp\WindowsUpdate\SetupLogs`.
-- Post-reboot script: `C:\Temp\WindowsUpdate\Windows11Upgrade_PostReboot.ps1`.
-- Toast assets: `C:\Temp\Windows11Upgrade\Toast-Notification\hero.jpg` / `logo.jpg`.
+- Post-reboot script: `C:\Temp\WindowsUpdate\Windows11Upgrade.ps1` (reuses the main orchestrator).
+- Toast assets: `C:\Temp\WindowsUpdate\Toast-Notification\hero.jpg` / `logo.jpg`.
 
 ## Tasks & Notifications
 - Reboot reminders: `Win11_RebootReminder_1` / `_2` (uses configured times).
@@ -44,7 +44,7 @@
 
 ## Logs & Troubleshooting
 - Main log: `C:\Windows11UpgradeLog.txt`. Watch for:
-  - Duration formatting warnings (resolved in v2.5.7).
+  - Duration formatting warnings (resolved in v2.5.7+ with invariant formatting).
   - Task registration errors: check `schtasks` command/output in log and verify paths for `Toast-Notification` scripts and PowerShell (`System32\WindowsPowerShell\v1.0\powershell.exe`).
 - Failure marker: `C:\Temp\WindowsUpdate\UpgradeFailed.txt` (contains reason). Pending state: `PendingReboot.txt`.
 - Self-repair: reruns staging if device rebooted without completing upgrade; cleans stale artifacts on failure.
@@ -57,13 +57,31 @@ cd .\Windows11Upgrade
 ```
 
 ## Notes
-- Keep `Windows11Upgrade` folder intact; scripts expect relative module paths.
+- Keep `WindowsUpgrade` folder intact; scripts expect relative module paths.
 - Do not rename marker files (`PendingReboot.txt`, `UpgradeFailed.txt`); monitors depend on them.
 - Ensure `hero.jpg` and `logo.jpg` are present in the toast folder before scheduling reminders.
+- Successful post-upgrade cleanup removes `C:\Temp\WindowsUpdate` (including the staged scripts) and archives setup logs; only the main log remains.
+- Post-reboot validation now has a RunOnce fallback in case Task Scheduler deletes/blocks the scheduled task before it runs.
+- Post-reboot cleanup/validation task is only removed after the state directory is gone; if `C:\Temp\WindowsUpdate` remains, the task stays to force cleanup on the next run.
 
 ---
 
 # Changelog
+
+## 2.6.0 - 2025-11-30
+- Configuration now loads from JSON (RMM writes `config.json`; packaged default ships as `config.default.json`) with no computer-specific log fallback.
+- setup.exe always runs with `/noreboot`; when `AutoReboot` is true, the script triggers `shutdown /r /t 0` after staging completes so tasks and reminders are registered first.
+- Removed unused reboot event logging helper and simplified module loading to rely on `$PSScriptRoot` and helper discovery.
+- RMM builder now outputs `config.json` with `@Parameter@` tokens for ConnectWise substitution.
+
+## 2.5.9 - 2025-11-29
+- Post-reboot validation now reuses `Windows11Upgrade.ps1` and registers `Win11_PostRebootValidation` on logon (with RunOnce fallback) so cleanup runs after user logon.
+- Cleanup retries removal of `C:\Temp\WindowsUpdate` up to 3 times; if still present, it retains the validation task and re-registers RunOnce to keep retrying until the folder is gone.
+
+## 2.5.8 - 2025-11-29
+- Removed unused `C:\Temp\ToastAssets` creation and added cleanup coverage for any remnants.
+- Post-upgrade cleanup now always logs to the primary log file and removes `C:\Temp\WindowsUpdate` (including staged scripts) after success.
+- Hardened task registration deletes to ignore missing-task errors and tightened duration formatting with invariant culture.
 
 ## 2.5.7 - 2025-11-28
 - Hardened duration formatting (TryParse) for ISO/setup phases and execution summaries to eliminate `TimeSpan` string errors.
@@ -91,7 +109,7 @@ cd .\Windows11Upgrade
 - Each helper script now carries version/date headers plus example test commands, and the cleanup module offers a `-ListCleanupTargets` preview to validate post-upgrade tidy-up safely.
 
 ## 2.4.1 - 2025-11-27
-- Fixed toast delivery failures (“system cannot find the file specified”) by writing helper scripts to stable paths, pre-creating `C:\Temp\ToastAssets`, and invoking toasts via absolute `wscript.exe`/`powershell.exe` paths with richer schtasks logging when creation/run fails.
+- Fixed toast delivery failures (“system cannot find the file specified”) by writing helper scripts to stable paths and invoking toasts via absolute `wscript.exe`/`powershell.exe` paths with richer schtasks logging when creation/run fails.
 - Simplified progress logging strings to `ISO download progress X%` and `Install progress X%`.
 - Stopped logging the benign “BITS job disappeared” warning after transfers finish by breaking the poll loop as soon as the transfer completes.
 
@@ -121,13 +139,13 @@ cd .\Windows11Upgrade
 - Toast templates now honor existing cached images instead of re-downloading on every run, reducing download toast flakiness when connectivity is limited.
 
 ## 2.3.1 - 2025-11-06
-- Updated the upgrade script metadata and expanded logging so every pre/post reboot action, including reboot initiator details (Event 1074), is written to `C:\Windows11UpgradeLog.txt`.
+- Updated the upgrade script metadata and expanded logging so pre/post reboot actions are written to `C:\Windows11UpgradeLog.txt`.
 - Reworked reboot reminders to fall back to interactive logon triggers when no user is active, while still scheduling immediate reminders when a user is present.
 - Added post-upgrade cleanup that archives setup logs, removes transient staging files/ISO, and marks `UpgradeState.json` as `Completed`.
 - Hardware compatibility checks now run before downloading the Windows 11 ISO to avoid large transfers on unsupported devices.
 - Added detailed ISO download progress logging (5% increments) to help with staging diagnostics.
 - Fixed BITS cleanup calls (`Complete/Remove-BitsTransfer`) to use the correct `-BitsJob` parameter so asynchronous downloads no longer throw `parameter name 'BitsTransfer'` errors at completion.
-- Detects when `C:\Windows11UpgradeLog.txt` has been renamed to `C:\Windows11UpgradeLog-$COMPUTERNAME.txt` (by the external monitor) and automatically continues logging to the renamed file.
+- Retains primary logging to `C:\Windows11UpgradeLog.txt` throughout the workflow.
 - Fixed the execution summary formatter so it tolerates missing duration values (no more `Cannot convert null to type "System.TimeSpan"` errors when a phase hasn’t run).
 - Updated SentinelOne version detection to read DisplayVersion from the standard uninstall registry keys, matching how Add/Remove Programs reports the agent.
 - Extended `Collect-Windows11UpgradeLogs.ps1` coverage to additional post-upgrade log locations (Windows.old) and enhanced environment reporting.

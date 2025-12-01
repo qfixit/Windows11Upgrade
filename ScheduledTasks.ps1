@@ -1,7 +1,7 @@
 # Scheduled Task Helpers
-# Version 2.5.1
-# Date 11/28/2025
-# Author Remark: Quintin Sheppard
+# Version 2.5.9
+# Date 11/29/2025
+# Author: Quintin Sheppard
 # Summary: Registers/cleans reboot reminder tasks and post-reboot validation tasks.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\ScheduledTasks.ps1'; Register-RebootReminderTasks"
 
@@ -32,6 +32,7 @@ function Register-RebootReminderTasks {
 
     $toastReminderScript = Join-Path -Path $privateRoot -ChildPath "Toast-Notification\Toast-Windows11RebootReminder.ps1"
     $powershellExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $schtasksExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\schtasks.exe"
 
     if ([string]::IsNullOrWhiteSpace($toastReminderScript) -or -not (Test-Path -Path $toastReminderScript -PathType Leaf)) {
         Write-Log -Message ("Reboot reminder toast script missing at {0}; reminder tasks will not be registered. privateRoot={1}" -f $toastReminderScript, $privateRoot) -Level "WARN"
@@ -47,13 +48,17 @@ function Register-RebootReminderTasks {
     Write-Log -Message ("Reminder task command: {0}" -f $command) -Level "VERBOSE"
 
     foreach ($taskName in $reminderTaskNames) {
-        schtasks /Delete /TN $taskName /F 2>$null
+        try {
+            & $schtasksExe /Delete /TN $taskName /F 2>$null | Out-Null
+        } catch {
+            # Ignore missing tasks or delete failures so registration can continue.
+        }
     }
 
     if ($user) {
         $taskCommand = ('"{0}"' -f $command)
         $createArgs1 = "/Create", "/TN", $reminderTaskNames[0], "/TR", $taskCommand, "/SC", "DAILY", "/ST", $RebootReminder1Time, "/RL", "HIGHEST", "/F", "/IT", "/RU", $user
-        $output1 = & C:\Windows\System32\schtasks.exe $createArgs1 2>&1
+        $output1 = & $schtasksExe $createArgs1 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Log -Message ("Failed to register {0}. Exit code: {1}. Command: schtasks {2}" -f $reminderTaskNames[0], $LASTEXITCODE, ($createArgs1 -join " ")) -Level "ERROR"
             if ($output1) { Write-Log -Message ("schtasks output: {0}" -f (($output1 | Out-String).Trim())) -Level "WARN" }
@@ -62,7 +67,7 @@ function Register-RebootReminderTasks {
         }
 
         $createArgs2 = "/Create", "/TN", $reminderTaskNames[1], "/TR", $taskCommand, "/SC", "DAILY", "/ST", $RebootReminder2Time, "/RL", "HIGHEST", "/F", "/IT", "/RU", $user
-        $output2 = & C:\Windows\System32\schtasks.exe $createArgs2 2>&1
+        $output2 = & $schtasksExe $createArgs2 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Log -Message ("Failed to register {0}. Exit code: {1}. Command: schtasks {2}" -f $reminderTaskNames[1], $LASTEXITCODE, ($createArgs2 -join " ")) -Level "ERROR"
             if ($output2) { Write-Log -Message ("schtasks output: {0}" -f (($output2 | Out-String).Trim())) -Level "WARN" }
@@ -103,8 +108,13 @@ function Register-RebootReminderTasks {
 }
 
 function Remove-RebootReminderTasks {
+    $schtasksExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\schtasks.exe"
     foreach ($taskName in $reminderTaskNames) {
-        schtasks /Delete /TN $taskName /F 2>$null
+        try {
+            & $schtasksExe /Delete /TN $taskName /F 2>$null | Out-Null
+        } catch {
+            # Ignore deletion errors during cleanup.
+        }
         Write-Log -Message "Removed scheduled task $taskName (if it existed)." -Level "VERBOSE"
     }
 
@@ -149,9 +159,13 @@ function Register-PostRebootValidationTask {
         return
     }
 
-    schtasks /Delete /TN $postRebootValidationTaskName /F 2>$null
-
     $powershellExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $schtasksExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\schtasks.exe"
+    try {
+        & $schtasksExe /Delete /TN $postRebootValidationTaskName /F 2>$null | Out-Null
+    } catch {
+        # Missing task is fine; continue to registration.
+    }
     if (-not (Test-Path -Path $powershellExe -PathType Leaf)) {
         Write-Log -Message ("PowerShell executable not found at expected path {0}; post-reboot validation task will not be registered." -f $powershellExe) -Level "WARN"
         return
@@ -168,7 +182,7 @@ function Register-PostRebootValidationTask {
         "/Create",
         "/TN", $postRebootValidationTaskName,
         "/TR", $command,
-        "/SC", "ONSTART",
+        "/SC", "ONLOGON",
         "/RL", "HIGHEST",
         "/F",
         "/RU", "SYSTEM"
@@ -192,18 +206,53 @@ function Register-PostRebootValidationTask {
     } else {
         Write-Log -Message "Post-reboot validation task registered to rerun the script after the next restart." -Level "INFO"
     }
+
+    # RunOnce fallback in case Task Scheduler deletes/blocks the task before reboot.
+    if ($postRebootValidationRunOnce) {
+        try {
+            $runOnceKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"
+            New-Item -Path $runOnceKey -Force | Out-Null
+            Set-ItemProperty -Path $runOnceKey -Name $postRebootValidationRunOnce -Value $command -Force
+            Write-Log -Message ("Registered RunOnce fallback {0} to execute post-reboot validation." -f $postRebootValidationRunOnce) -Level "VERBOSE"
+        } catch {
+            Write-Log -Message ("Failed to register RunOnce fallback for post-reboot validation. Error: {0}" -f $_) -Level "WARN"
+        }
+    }
 }
 
 function Remove-PostRebootValidationTask {
-    schtasks /Delete /TN $postRebootValidationTaskName /F 2>$null
+    $schtasksExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\schtasks.exe"
+    try {
+        & $schtasksExe /Delete /TN $postRebootValidationTaskName /F 2>$null | Out-Null
+    } catch {
+        # Ignore deletion errors during cleanup.
+    }
     Write-Log -Message "Removed post-reboot validation task (if it existed)." -Level "VERBOSE"
 
-    if (Test-Path -Path $postRebootScriptPath) {
+    if ($postRebootValidationRunOnce) {
         try {
-            Remove-Item -Path $postRebootScriptPath -Force -ErrorAction Stop
-            Write-Log -Message "Removed persisted post-reboot script at $postRebootScriptPath." -Level "VERBOSE"
+            $runOnceKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"
+            if (Test-Path -Path $runOnceKey) {
+                Remove-ItemProperty -Path $runOnceKey -Name $postRebootValidationRunOnce -ErrorAction Stop
+                Write-Log -Message ("Removed RunOnce fallback {0}." -f $postRebootValidationRunOnce) -Level "VERBOSE"
+            }
         } catch {
-            Write-Log -Message "Failed to remove persisted post-reboot script. Error: $_" -Level "WARN"
+            Write-Log -Message ("Failed to remove RunOnce fallback {0}. Error: {1}" -f $postRebootValidationRunOnce, $_) -Level "WARN"
+        }
+    }
+
+    if (Test-Path -Path $postRebootScriptPath) {
+        $shouldRemoveScript = $true
+        if ($script:CurrentScriptPath -and ([System.IO.Path]::GetFullPath($postRebootScriptPath) -eq [System.IO.Path]::GetFullPath($script:CurrentScriptPath))) {
+            $shouldRemoveScript = $false
+        }
+        if ($shouldRemoveScript) {
+            try {
+                Remove-Item -Path $postRebootScriptPath -Force -ErrorAction Stop
+                Write-Log -Message "Removed persisted post-reboot script at $postRebootScriptPath." -Level "VERBOSE"
+            } catch {
+                Write-Log -Message "Failed to remove persisted post-reboot script. Error: $_" -Level "WARN"
+            }
         }
     }
 }

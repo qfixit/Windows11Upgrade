@@ -1,7 +1,7 @@
 # System & Compatibility Checks
-# Version 2.5.1
-# Date 11/28/2025
-# Author Remark: Quintin Sheppard
+# Version 2.6.0
+# Date 11/30/2025
+# Author: Quintin Sheppard
 # Summary: Hardware and SentinelOne compatibility validation for the upgrade workflow.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Private\\SystemChecks\\SystemChecks.ps1'; Check-SystemRequirements"
 
@@ -47,8 +47,9 @@ function Get-SentinelAgentVersion {
 function Ensure-SentinelAgentCompatible {
     $version = Get-SentinelAgentVersion
     if (-not $version) {
-        Write-Log -Message "SentinelOne agent not detected or version unavailable." -Level "VERBOSE"
-        return $true
+        Write-Log -Message "SentinelOne agent not detected or version unavailable." -Level "ERROR"
+        Write-FailureMarker "SentinelOne agent version could not be determined."
+        return $false
     }
 
     if ($version -eq [version]'0.0.0.0') {
@@ -86,8 +87,17 @@ function Check-SystemRequirements {
     }
 
     # Check Secure Boot
-    $secureBoot = Get-CimInstance -ClassName Win32_BIOS -Property *
-    if ($secureBoot) {
+    $secureBootEnabled = $false
+    try {
+        if (Get-Command -Name Confirm-SecureBootUEFI -ErrorAction Stop) {
+            $secureBootEnabled = Confirm-SecureBootUEFI -ErrorAction Stop
+        }
+    } catch {
+        Write-Log -Message ("Unable to query Secure Boot state. Error: {0}" -f $_) -Level "WARN"
+        $secureBootEnabled = $false
+    }
+
+    if ($secureBootEnabled) {
         Write-Log "Secure Boot is enabled."
     } else {
         Write-Log "Secure Boot is not enabled. Windows 11 requires Secure Boot."
