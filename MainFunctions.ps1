@@ -1,6 +1,6 @@
 # Core Utilities & Progress Helpers
-# Version 2.6.0
-# Date 11/30/2025
+# Version 2.7.0
+# Date 12/03/2025
 # Author: Quintin Sheppard
 # Summary: Common logging, directory creation, and progress/summary helpers used across the upgrade workflow.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\MainFunctions.ps1'; Write-Log 'hello world'"
@@ -69,6 +69,152 @@ function Ensure-Directory {
     }
 }
 
+function Clean-BitsTempFiles {
+    try {
+        if ($stateDirectory -and (Test-Path -Path $stateDirectory)) {
+            Get-ChildItem -Path $stateDirectory -Filter "BIT*.tmp" -File -ErrorAction Stop | ForEach-Object {
+                try { Remove-Item -Path $_.FullName -Force -ErrorAction Stop } catch {}
+            }
+        }
+    } catch {
+        Write-Log -Message ("Unable to clean BITS temp files. Error: {0}" -f $_) -Level "WARN"
+    }
+}
+
+function Get-ToastAppId {
+    $appId = "Koltiv.Windows11Upgrade"
+    $shortcutName = "Koltiv Windows 11 Upgrade.lnk"
+
+    $candidateRoots = @()
+    if ($env:APPDATA) { $candidateRoots += $env:APPDATA }
+    if ($env:ProgramData) { $candidateRoots += $env:ProgramData }
+    $shortcutPath = $null
+
+    foreach ($root in $candidateRoots) {
+        $targetDir = Join-Path -Path $root -ChildPath "Microsoft\Windows\Start Menu\Programs"
+        $candidatePath = Join-Path -Path $targetDir -ChildPath $shortcutName
+        try {
+            if (-not (Test-Path -Path $targetDir)) {
+                New-Item -Path $targetDir -ItemType Directory -Force -ErrorAction Stop | Out-Null
+            }
+            $shortcutPath = $candidatePath
+            break
+        } catch {
+            Write-Log -Message ("Unable to prepare toast shortcut directory {0}. Error: {1}" -f $targetDir, $_) -Level "VERBOSE"
+            continue
+        }
+    }
+
+    if ($shortcutPath -and -not (Test-Path -Path $shortcutPath -PathType Leaf)) {
+        try {
+            $wsh = New-Object -ComObject WScript.Shell
+            $shortcut = $wsh.CreateShortcut($shortcutPath)
+            $powershellExe = [System.IO.Path]::Combine($env:SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+            $shortcut.TargetPath = $powershellExe
+            $shortcut.Arguments = "-NoProfile"
+            $shortcut.WorkingDirectory = Split-Path -Path $shortcutPath -Parent
+            if ($ToastAssetsRoot) {
+                $iconPath = Join-Path -Path $ToastAssetsRoot -ChildPath "logo.png"
+                if (Test-Path -Path $iconPath -PathType Leaf) {
+                    $shortcut.IconLocation = $iconPath
+                }
+            }
+            $shortcut.Save() | Out-Null
+        } catch {
+            Write-Log -Message ("Failed to create toast shortcut for app identity. Error: {0}" -f $_) -Level "VERBOSE"
+        }
+    }
+
+    return $appId
+}
+
+function Should-ShowToastPhase {
+    param([string]$Phase)
+
+    if ([string]::IsNullOrWhiteSpace($Phase)) { return $false }
+    $markerDir = if ($stateDirectory) { $stateDirectory } else { $env:TEMP }
+    $markerPath = Join-Path -Path $markerDir -ChildPath ("Toast-{0}-Shown.txt" -f $Phase)
+
+    if (Test-Path -Path $markerPath -PathType Leaf) {
+        return $false
+    }
+
+    try {
+        "shown" | Set-Content -Path $markerPath -Encoding ASCII -ErrorAction SilentlyContinue
+    } catch {}
+
+    return $true
+}
+
+function Show-UpgradeProgressToast {
+    param(
+        [ValidateSet('Download', 'Install')]
+        [string]$Phase,
+        [double]$PercentComplete = -1,
+        [string]$Status,
+        [string]$TitleText,
+        [string]$BodyText,
+        [string]$DocLink
+    )
+
+    if (-not (Should-ShowToastPhase -Phase $Phase)) { return }
+    if (-not $ToastAssetsRoot) { return }
+
+    $toastScript = Join-Path -Path $ToastAssetsRoot -ChildPath "Toast-Windows11Download.ps1"
+    if (-not (Test-Path -Path $toastScript -PathType Leaf)) { return }
+
+    $appId = Get-ToastAppId
+
+    $powershellExe = [System.IO.Path]::Combine($env:SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    $argumentList = @(
+        "-ExecutionPolicy", "Bypass",
+        "-NoProfile",
+        "-File", "`"$toastScript`"",
+        "-Phase", $Phase,
+        "-PercentComplete", ([string]::Format([System.Globalization.CultureInfo]::InvariantCulture, "{0}", $PercentComplete))
+    )
+
+    if ($Status) { $argumentList += @("-Status", "`"$Status`"") }
+    if ($TitleText) { $argumentList += @("-TitleText", "`"$TitleText`"") }
+    if ($BodyText) { $argumentList += @("-BodyText", "`"$BodyText`"") }
+    $docToUse = if ($DocLink) { $DocLink } elseif ($script:DocLink) { $script:DocLink } elseif ($global:DocLink) { $global:DocLink } else { $null }
+    if ($docToUse) { $argumentList += @("-DocLink", "`"$docToUse`"") }
+
+    try {
+        Start-Process -FilePath $powershellExe -ArgumentList ($argumentList -join ' ') -WindowStyle Hidden -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Log -Message ("Failed to launch progress toast. Error: {0}" -f $_) -Level "WARN"
+    }
+}
+
+function Write-ErrorCode {
+    param(
+        [int]$Code,
+        [string]$Detail = ""
+    )
+
+    $info = $null
+    if (Get-Command -Name Get-ErrorCodeInfo -ErrorAction SilentlyContinue) {
+        $info = Get-ErrorCodeInfo -Code $Code
+    }
+
+    $title = if ($info) { $info.Title } else { "Unknown error" }
+    $description = if ($info) { $info.Description } else { "" }
+    $remediation = if ($info) { $info.Remediation } else { "" }
+
+    $message = ("Error {0}: {1}" -f $Code, $title)
+    if ($description) { $message = "$message. $description" }
+    if ($Detail) { $message = "$message. $Detail" }
+    if ($remediation) { $message = "$message. Remediation: $remediation" }
+
+    Write-Log -Message $message -Level "ERROR"
+    if (Get-Command -Name Write-FailureMarker -ErrorAction SilentlyContinue) {
+        Write-FailureMarker $message
+    }
+    $global:LASTEXITCODE = $Code
+    exit $Code
+}
+
 function Get-SetupProgressSnapshot {
     try {
         $props = Get-ItemProperty -Path $moSetupVolatileKey -ErrorAction Stop
@@ -118,10 +264,23 @@ function Write-SetupProgressUpdate {
     }
 
     $shouldLog = $false
+    if (-not $Tracker.ContainsKey("LastToastProgress")) {
+        $Tracker["LastToastProgress"] = $null
+    }
+
     if ($null -ne $snapshot.SetupProgress -and ($Force -or $snapshot.SetupProgress -ne $Tracker.LastProgress)) {
         Write-Log -Message ("Install progress {0}%" -f $snapshot.SetupProgress) -Level "INFO"
         $Tracker.LastProgress = $snapshot.SetupProgress
         $shouldLog = $true
+
+        $lastToast = $Tracker.LastToastProgress
+        $toastDelta = if ($lastToast -eq $null) { 100 } else { [math]::Abs($snapshot.SetupProgress - $lastToast) }
+        if (Get-Command -Name Show-UpgradeProgressToast -ErrorAction SilentlyContinue) {
+            if ($Force -or $toastDelta -ge 5) {
+                Show-UpgradeProgressToast -Phase Install -PercentComplete $snapshot.SetupProgress -Status "Installing"
+                $Tracker.LastToastProgress = $snapshot.SetupProgress
+            }
+        }
     }
 
     if (-not $shouldLog -and $Force -and $Tracker.SourceDetected) {

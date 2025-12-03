@@ -1,8 +1,8 @@
 # Windows 11 Upgrade Orchestrator (Modular)
 # Quintin Sheppard
-# Updated 11/30/2025
+# Updated 12/03/2025
 # Author: Quintin Sheppard
-# Script Version 2.6.0
+# Script Version 2.7.0
 # Summary: Downloads/validates the Windows 11 25H2 ISO, stages setup.exe /noreboot, writes state markers, self-heals failed runs, and registers reminder/validation tasks.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -File ".\Windows11Upgrade.ps1" -VerboseLogging
 
@@ -14,6 +14,32 @@ if ($VerboseLogging) {
     $VerbosePreference = 'Continue'
 }
 $ErrorActionPreference = 'Stop'
+
+$script:InstanceMutex = $null
+try {
+    $createdNew = $false
+    $mutexName = "Global\\Windows11UpgradeMutex"
+    $script:InstanceMutex = New-Object System.Threading.Mutex($true, $mutexName, [ref]$createdNew)
+    if (-not $createdNew) {
+        # Another instance is already running; exit quietly.
+        return
+    }
+} catch {
+    # If mutex creation fails, fall back to a process command-line check; exit quietly if another instance is found.
+    try {
+        $currentPath = if ($PSCommandPath) { $PSCommandPath } elseif ($MyInvocation.MyCommand.Path) { $MyInvocation.MyCommand.Path } else { $null }
+        if ($currentPath) {
+            $others = Get-Process -Name "powershell","pwsh" -ErrorAction SilentlyContinue | Where-Object {
+                $_.Id -ne $PID -and $_.Path -and $_.Path -match "powershell" -and $_.CommandLine -and ($_.CommandLine -like "*$currentPath*")
+            }
+            if ($others) {
+                return
+            }
+        }
+    } catch {
+        # As a last resort, continue.
+    }
+}
 
 $script:CurrentScriptPath = if ($PSCommandPath) { $PSCommandPath } elseif ($MyInvocation.MyCommand.Path) { $MyInvocation.MyCommand.Path } else { $null }
 $script:PrivateRoot = if ($PSScriptRoot) { $PSScriptRoot } elseif ($script:CurrentScriptPath) { Split-Path -Path $script:CurrentScriptPath -Parent } else { (Get-Location).ProviderPath }
@@ -33,6 +59,20 @@ $script:IsoDownloadDuration = $null
 $script:SetupExecutionDuration = $null
 $script:SummaryLogged = $false
 $script:ReminderRegistrationMode = $null
+$script:VersionBanner = $null
+
+try {
+    $versionInfoPath = Join-Path -Path $script:PrivateRoot -ChildPath "Version.txt"
+    if (Test-Path -Path $versionInfoPath -PathType Leaf) {
+        $versionText = Get-Content -Path $versionInfoPath -TotalCount 1 -ErrorAction Stop
+        $script:VersionBanner = $versionText
+        Write-Log -Message ("Starting Windows11Upgrade.ps1 ({0})" -f $versionText) -Level "INFO"
+    } else {
+        Write-Log -Message "Starting Windows11Upgrade.ps1 (Version.txt not found)" -Level "INFO"
+    }
+} catch {
+    # If logging fails this early, continue silently
+}
 
 $helperModules = Get-ChildItem -Path $script:PrivateRoot -Filter "*.ps1" -File |
     Where-Object { $_.Name -notin @("Windows11Upgrade.ps1", "UpgradeConfig.ps1") } |
@@ -46,4 +86,15 @@ foreach ($module in $helperModules) {
     }
 }
 
-Start-Windows11Upgrade
+if (Get-Command -Name Clean-BitsTempFiles -ErrorAction SilentlyContinue) {
+    Clean-BitsTempFiles
+}
+
+try {
+    Start-Windows11Upgrade
+} finally {
+    if ($script:InstanceMutex) {
+        try { $script:InstanceMutex.ReleaseMutex() } catch {}
+        try { $script:InstanceMutex.Dispose() } catch {}
+    }
+}
