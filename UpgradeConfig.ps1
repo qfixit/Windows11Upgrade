@@ -1,8 +1,8 @@
 # Upgrade Configuration
-# Version 2.6.0
-# Date 11/30/2025
+# Version 2.7.0
+# Date 12/03/2025
 # Author: Quintin Sheppard
-# Summary: Loads configuration from JSON (C:\Temp\WindowsUpdate\config.json with fallback to config.default.json) and exports it for the upgrade workflow.
+# Summary: Loads configuration from JSON (C:\Temp\WindowsUpdate\config.json) and exports it for the upgrade workflow.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\UpgradeConfig.ps1'; $cfg = Set-UpgradeConfig; $cfg.BaseLogFile"
 
 function Resolve-Value {
@@ -63,30 +63,18 @@ function Resolve-Value {
 
 function Get-ConfigData {
     param(
-        [string]$PrimaryPath,
-        [string]$FallbackPath
+        [Parameter(Mandatory)][string]$Path
     )
 
-    if (-not (Test-Path -Path $FallbackPath -PathType Leaf)) {
-        throw ("Fallback configuration missing at {0}" -f $FallbackPath)
+    if (-not (Test-Path -Path $Path -PathType Leaf)) {
+        throw ("Configuration file not found at {0}. Ensure UpgradeConfig-RMM.ps1 generated config.json before running the upgrade." -f $Path)
     }
 
-    $defaultConfig = Get-Content -Path $FallbackPath -Raw | ConvertFrom-Json
-    $rawConfig = $defaultConfig
-
-    if (Test-Path -Path $PrimaryPath -PathType Leaf) {
-        try {
-            $rawConfig = Get-Content -Path $PrimaryPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-        } catch {
-            Write-Warning ("Unable to read primary configuration at {0}. Using defaults. Error: {1}" -f $PrimaryPath, $_)
-            $rawConfig = $defaultConfig
-        }
-    } else {
-        Write-Verbose ("Primary configuration not found at {0}; using default configuration." -f $PrimaryPath)
+    try {
+        return Get-Content -Path $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw ("Unable to read configuration at {0}. Error: {1}" -f $Path, $_)
     }
-
-    $resolved = Resolve-Value -Raw $rawConfig -Default $defaultConfig
-    return $resolved
 }
 
 function Build-SetupArguments {
@@ -101,14 +89,14 @@ function Build-SetupArguments {
 }
 
 function Set-UpgradeConfig {
-    $scriptRoot = if ($PSScriptRoot) { $PSScriptRoot } elseif ($PSCommandPath) { Split-Path -Path $PSCommandPath -Parent } else { (Get-Location).ProviderPath }
     $primaryConfigPath = "C:\Temp\WindowsUpdate\config.json"
-    $fallbackConfigPath = Join-Path -Path $scriptRoot -ChildPath "config.default.json"
-
-    $config = Get-ConfigData -PrimaryPath $primaryConfigPath -FallbackPath $fallbackConfigPath
+    $config = Get-ConfigData -Path $primaryConfigPath
 
     if ($config.PSObject.Properties.Match("LogFile").Count -eq 0) {
         $config | Add-Member -NotePropertyName "LogFile" -NotePropertyValue $null -Force
+    }
+    if ($config.PSObject.Properties.Match("SetupExeArguments").Count -eq 0) {
+        $config | Add-Member -NotePropertyName "SetupExeArguments" -NotePropertyValue $null -Force
     }
 
     $config.LogFile = $config.BaseLogFile

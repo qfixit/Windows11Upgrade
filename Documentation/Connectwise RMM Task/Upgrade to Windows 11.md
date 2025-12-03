@@ -8,9 +8,9 @@ Use this task to stage Windows 11 25H2 via ISO with `Windows11Upgrade.ps1`. It p
 - PowerShell v5+
 ## Sample Run
 
-![[SampleRun-Select.png]]
-![[SampleRun-ConfigureSetup.png]]
-![[SampleRun-Schedule.png]]
+![SampleRun-Select.png](../../Documentation/Connectwise%20RMM%20Task/SampleRun-Select.png)
+![SampleRun-ConfigureSetup.png](../../Documentation/Connectwise%20RMM%20Task/SampleRun-ConfigureSetup.png)
+![SampleRun-Schedule.png](../../Documentation/Connectwise%20RMM%20Task/SampleRun-Schedule.png)
 ## User Parameters
 - Windows11IsoUrl (default: SharePoint ISO link)
 	Direct download URL for the Windows 11 25H2 ISO.

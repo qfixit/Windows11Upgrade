@@ -1,6 +1,6 @@
 # State & Marker Helpers
-# Version 2.5.9
-# Date 11/29/2025
+# Version 2.6.2
+# Date 11/30/2025
 # Author: Quintin Sheppard
 # Summary: Handles upgrade markers, state files, and failure tracking.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Private\\State\\UpgradeState.ps1'; Write-FailureMarker 'test reason'"
@@ -178,6 +178,38 @@ function Clear-UpgradeState {
                 Write-Log -Message ("Removed upgrade state file {0}." -f $path) -Level "VERBOSE"
             } catch {
                 Write-Log -Message ("Unable to remove upgrade state file {0}. Error: {1}" -f $path, $_) -Level "WARN"
+            }
+        }
+    }
+}
+
+function Invoke-UpgradeFailureCleanup {
+    param(
+        [switch]$PreserveHealthyIso
+    )
+
+    try {
+        Clear-UpgradeState
+    } catch {
+        Write-Log -Message ("Failed to clear upgrade state during failure cleanup. Error: {0}" -f $_) -Level "WARN"
+    }
+
+    $pathsToRemove = @()
+    if (-not $PreserveHealthyIso) {
+        if ($isoFilePath) { $pathsToRemove += $isoFilePath }
+        if ($isoHashCacheFile) { $pathsToRemove += $isoHashCacheFile }
+    }
+
+    $setupLogsPath = Join-Path -Path $stateDirectory -ChildPath "SetupLogs"
+    $pathsToRemove += $setupLogsPath
+
+    foreach ($p in $pathsToRemove) {
+        if (Test-Path -Path $p) {
+            try {
+                Remove-Item -Path $p -Recurse -Force -ErrorAction Stop
+                Write-Log -Message ("Removed artifact {0} during failure cleanup." -f $p) -Level "VERBOSE"
+            } catch {
+                Write-Log -Message ("Unable to remove artifact {0} during failure cleanup. Error: {1}" -f $p, $_) -Level "WARN"
             }
         }
     }

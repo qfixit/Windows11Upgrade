@@ -191,15 +191,35 @@ function Register-PostRebootValidationTask {
     }
 }
 
-function Remove-PostRebootValidationTask {
-    $schtasksExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\schtasks.exe"
-    try {
-        & $schtasksExe /Delete /TN $postRebootValidationTaskName /F 2>$null | Out-Null
-    } catch {
-        # Ignore deletion errors during cleanup.
-    }
-    Write-Log -Message "Removed post-reboot validation task (if it existed)." -Level "VERBOSE"
+function Register-PostRebootValidationTask {
+    $targetScript = Join-Path -Path $privateRoot -ChildPath "Windows11Upgrade.ps1"
 
+    $powershellExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\WindowsPowerShell\v1.0\powershell.exe"
+
+    if (-not (Test-Path -Path $powershellExe -PathType Leaf)) {
+        Write-Log -Message ("PowerShell executable not found at expected path {0}; post-reboot validation runonce will not be registered." -f $powershellExe) -Level "WARN"
+        return
+    }
+
+    if (-not (Test-Path -Path $targetScript -PathType Leaf)) {
+        Write-Log -Message ("Post-reboot validation script missing at {0}; runonce will not be registered." -f $targetScript) -Level "WARN"
+        return
+    }
+
+    if ($postRebootValidationRunOnce) {
+        try {
+            $runOnceKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"
+            New-Item -Path $runOnceKey -Force | Out-Null
+            $command = ('"{0}" -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "{1}"' -f $powershellExe, $targetScript)
+            Set-ItemProperty -Path $runOnceKey -Name $postRebootValidationRunOnce -Value $command -Force
+            Write-Log -Message ("Registered RunOnce {0} to execute post-reboot validation." -f $postRebootValidationRunOnce) -Level "VERBOSE"
+        } catch {
+            Write-Log -Message ("Failed to register RunOnce for post-reboot validation. Error: {0}" -f $_) -Level "WARN"
+        }
+    }
+}
+
+function Remove-PostRebootValidationTask {
     if ($postRebootValidationRunOnce) {
         try {
             $runOnceKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"

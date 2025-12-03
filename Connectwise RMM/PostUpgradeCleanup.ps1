@@ -11,6 +11,7 @@ $ErrorActionPreference = 'Stop'
 
 # Defaults (kept local for robustness)
 $stateDirectory = "C:\Temp\WindowsUpdate"
+$failureMarker  = "C:\Temp\WindowsUpdate\UpgradeFailed.txt"
 $logFile = "C:\Windows11UpgradeLog.txt"
 $reminderTaskNames = @("Win11_RebootReminder_1", "Win11_RebootReminder_2")
 $postRebootValidationTaskName = "Win11_PostRebootValidation"
@@ -50,6 +51,21 @@ function Test-IsWindows11Simple {
     return $false
 }
 
+function Write-FailureMarker {
+    param([string]$Reason)
+
+    try {
+        if (-not (Test-Path -Path $stateDirectory)) {
+            New-Item -Path $stateDirectory -ItemType Directory -Force | Out-Null
+        }
+        $entry = "{0:yyyy-MM-dd HH:mm:ss} - {1}" -f (Get-Date), $Reason
+        Set-Content -Path $failureMarker -Value $entry -Encoding UTF8
+        Write-Log -Message ("Failure marker recorded: {0}" -f $Reason) -Level "WARN"
+    } catch {
+        Write-Log -Message "Unable to record failure marker. Error: $_" -Level "ERROR"
+    }
+}
+
 function Remove-TasksAndRunOnce {
     $schtasksExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\schtasks.exe"
 
@@ -74,7 +90,7 @@ function Ensure-RunOnceRetry {
         $powershellExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\WindowsPowerShell\v1.0\powershell.exe"
         $runOnceKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"
         $runOnceName = if ($postRebootValidationRunOnce) { $postRebootValidationRunOnce } else { "Win11_PostCleanup_Retry" }
-        $scriptPath = if ($script:CurrentScriptPath) { $script:CurrentScriptPath } else { Join-Path -Path $stateDirectory -ChildPath "Windows11Upgrade.ps1" }
+        $scriptPath = if ($script:CurrentScriptPath) { $script:CurrentScriptPath } else { Join-Path -Path $stateDirectory -ChildPath "PostUpgradeCleanup.ps1" }
         $cmd = ('"{0}" -ExecutionPolicy Bypass -NoProfile -File "{1}"' -f $powershellExe, $scriptPath)
         New-Item -Path $runOnceKey -Force | Out-Null
         Set-ItemProperty -Path $runOnceKey -Name $runOnceName -Value $cmd -Force
@@ -87,9 +103,24 @@ function Ensure-RunOnceRetry {
 try {
     Write-Log -Message "Post-reboot cleanup started." -Level "INFO"
 
+    $pendingRebootPath = Join-Path -Path $stateDirectory -ChildPath "PendingReboot.txt"
+    $scriptRunningPath = Join-Path -Path $stateDirectory -ChildPath "ScriptRunning.txt"
+    $hasPendingState = (Test-Path -Path $pendingRebootPath) -or (Test-Path -Path $scriptRunningPath)
+
     $isWin11 = Test-IsWindows11Simple
     if (-not $isWin11) {
-        Write-Log -Message "Windows 11 not detected; skipping cleanup to preserve staging." -Level "WARN"
+        if (-not $hasPendingState) {
+            Write-Log -Message "Windows 11 not detected and no pending upgrade state present; skipping cleanup invocation." -Level "WARN"
+            return
+        }
+
+        Write-Log -Message "Windows 11 not detected; marking upgrade as failed and preserving staging." -Level "WARN"
+        Write-FailureMarker "Post-reboot validation: Windows 11 not detected after reboot."
+        foreach ($path in @($scriptRunningPath, $pendingRebootPath)) {
+            if (Test-Path -Path $path) {
+                try { Remove-Item -Path $path -Force -ErrorAction Stop } catch { Write-Log -Message ("Unable to remove state file {0}. Error: {1}" -f $path, $_) -Level "WARN" }
+            }
+        }
         return
     }
 

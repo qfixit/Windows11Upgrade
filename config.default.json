@@ -1,5 +1,6 @@
 {
     "BaseLogFile": "C:\\Windows11UpgradeLog.txt",
+    "LogFile": null,
     "StateDirectory": "C:\\Temp\\WindowsUpdate",
     "UpgradeStateFiles": {
         "ScriptRunning": "C:\\Temp\\WindowsUpdate\\ScriptRunning.txt",
@@ -12,6 +13,7 @@
     "IsoHashCacheFile": "C:\\Temp\\WindowsUpdate\\Windows11_25H2.iso.sha256",
     "MinimumIsoSizeBytes": 4294967296,
     "SetupExeBaseArguments": "/Auto Upgrade /copylogs \"{0}\" /NoReboot /EULA accept /Quiet",
+    "SetupExeArguments": "",
     "MoSetupVolatileKey": "HKLM:\\SYSTEM\\Setup\\MoSetup\\Volatile",
     "PostRebootValidationTaskName": "Win11_PostRebootValidation",
     "PostRebootValidationRunOnce": "Win11_PostRebootValidation_RunOnce",
@@ -27,6 +29,7 @@
     "ToastAssetsRoot": "C:\\Temp\\WindowsUpdate\\Toast-Notification",
     "ToastHeroImage": "hero.jpg",
     "ToastLogoImage": "logo.jpg",
+    "DocLink": "@UpgradeGuide@",
     "ToastAttributionText": "Koltiv",
     "ToastHeaderText": "Windows 11 Upgrade",
     "MinimumSentinelAgentVersion": "24.2.2.0",

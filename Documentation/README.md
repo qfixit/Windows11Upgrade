@@ -1,31 +1,11 @@
-# Windows 11 Upgrade (25H2) – Technicians' Guide
+# Windows 11 Upgrade (25H2) – Technicians' Guide (v2.7.0)
 
 ## Overview
-- Stages Windows 11 25H2 from ISO using `setup.exe` with `/Quiet` and optional `/noreboot`.
+- Stages Windows 11 25H2 from ISO using `setup.exe` with `/Quiet` and `/noreboot` (script triggers `shutdown /r /t 0` at the end when `AutoReboot` is true).
 - Entry script (modular): `Windows11Upgrade.ps1` loads helpers under the same folder.
 - Logs to `C:\Windows11UpgradeLog.txt`.
 - State markers: `C:\Temp\WindowsUpdate\ScriptRunning.txt`, `PendingReboot.txt`, `UpgradeFailed.txt`.
-- Toast assets/scripts live in `WindowsUpdate\Toast-Notification`; tasks schedule reboot reminders and post-reboot validation.
-
-## RMM Task Flow (ConnectWise)
-1) Download and extract via `Helper Scripts/Download-Dev.ps1` (targets `C:\Temp\WindowsUpdate`).
-2) Run `WindowsUpdate\UpgradeConfig-RMM.ps1` with parameters (example):
-   ```powershell
-   powershell.exe -ExecutionPolicy Bypass -NoProfile -File "C:\Temp\WindowsUpdate\UpgradeConfig-RMM.ps1" `
-     -Windows11IsoUrl @Windows11IsoUrl@ `
-     -ISOHash @ISOHash@ `
-     -DynamicUpdate @DynamicUpdate@ `
-     -AutoReboot @AutoReboot@ `
-     -RebootReminder1Time @RebootReminder1Time@ `
-     -RebootReminder2Time @RebootReminder2Time@
-   ```
-   - Emits `C:\Temp\WindowsUpdate\config.json` with parameter tokens or supplied values (always overwrites).
-   - Defaults: DynamicUpdate=Enable, AutoReboot=False (setup runs with `/noreboot`; AutoReboot triggers a shutdown at script end), reminders 11:00/16:00.
-   - Toast assets expected at `C:\Temp\Windows11Upgrade\Toast-Notification\hero.jpg` and `logo.jpg`.
-3) Run the upgrade orchestrator:
-   ```powershell
-   powershell.exe -ExecutionPolicy Bypass -NoProfile -File "C:\Temp\WindowsUpdate\Windows11Upgrade.ps1"
-   ```
+- Toast assets/scripts live in `WindowsUpdate\Toast-Notification`; tasks schedule reboot reminders. Post-reboot validation uses RunOnce only (no scheduled task); cleanup can be triggered after upgrade if needed.
 
 ## Key Paths & Artifacts
 - ISO: `C:\Temp\WindowsUpdate\Windows11_25H2.iso` (hash cache `.iso.sha256`).
@@ -35,8 +15,8 @@
 
 ## Tasks & Notifications
 - Reboot reminders: `Win11_RebootReminder_1` / `_2` (uses configured times).
-- Post-reboot validation: `Win11_PostRebootValidation` (runs orchestrator after restart).
-- Toast scripts: `Toast-Windows11Download.ps1`, `Toast-Windows11RebootReminder.ps1` (run via scheduled tasks).
+- Post-reboot validation uses only RunOnce to relaunch the orchestrator; no scheduled task is registered.
+- Toast scripts: `Toast-Windows11Download.ps1`, `Toast-Windows11RebootReminder.ps1` (run via scheduled tasks for reminders).
 
 ## Preflight / Gating
 - SentinelOne version gate: requires ≥ 24.2.2.0 or maintenance mode; otherwise writes `UpgradeFailed.txt`.
@@ -61,12 +41,30 @@ cd .\Windows11Upgrade
 - Do not rename marker files (`PendingReboot.txt`, `UpgradeFailed.txt`); monitors depend on them.
 - Ensure `hero.jpg` and `logo.jpg` are present in the toast folder before scheduling reminders.
 - Successful post-upgrade cleanup removes `C:\Temp\WindowsUpdate` (including the staged scripts) and archives setup logs; only the main log remains.
-- Post-reboot validation now has a RunOnce fallback in case Task Scheduler deletes/blocks the scheduled task before it runs.
-- Post-reboot cleanup/validation task is only removed after the state directory is gone; if `C:\Temp\WindowsUpdate` remains, the task stays to force cleanup on the next run.
+- RunOnce is created for post-reboot validation; ConnectWise RMM can still trigger `PostUpgradeCleanup.ps1` after the device has upgraded.
 
 ---
 
 # Changelog
+
+## 2.7.0 - 2025-12-03
+- Progress toasts rebuilt with install/download phases, single notification per phase, and optional end-user guide link.
+- Toast AUMID now uses a Koltiv shortcut with fallback creation paths to avoid SYSTEM profile write errors.
+- Config/RMM emit now carries `DocLink` (@UpgradeGuide@) for the guide button in toasts.
+- Version headers and Version.txt updated for the 2.7.0 release.
+
+## 2.6.3 - 2025-12-01
+- Enforced single-instance execution with a global mutex and process check; extra invocations exit quietly.
+- Added error code catalog (`ErrorCodes.ps1`) and structured logging for technician-friendly remediation.
+- BITS hygiene: cleans `BIT*.tmp` on start, removes undersized downloads, retries ISO download via BITS then Invoke-WebRequest fallback.
+- Staging retries mount/setup up to 3 times, cleans corrupt media and `$WINDOWS.~BT` on 0xC1900107, logs 0xC1900208 blocks.
+- Post-reboot validation now RunOnce-only and runs hidden to avoid user-visible windows.
+- Self-repair restages after reboot interruptions and re-registers RunOnce/reminders.
+
+## 2.6.1 - 2025-11-30
+- Removed internal post-reboot validation task/runonce; cleanup is now triggered by ConnectWise RMM calling `PostUpgradeCleanup.ps1`.
+- RMM config always overwrites `config.json`; runtime no longer falls back to any default configuration file.
+- SentinelOne gate skips cleanly when the agent is absent; version enforcement applies only when installed.
 
 ## 2.6.0 - 2025-11-30
 - Configuration now loads from JSON (RMM writes `config.json`; packaged default ships as `config.default.json`) with no computer-specific log fallback.

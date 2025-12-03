@@ -1,5 +1,5 @@
 # Self-Repair Routine
-# Version 2.6.1
+# Version 2.6.3
 # Date 11/30/2025
 # Author: Quintin Sheppard
 # Summary: Restages the upgrade if a pending reboot failed to complete.
@@ -28,6 +28,7 @@ function Invoke-SelfRepair {
     Invoke-UpgradeFailureCleanup -PreserveHealthyIso
 
     try {
+        Ensure-SufficientDiskSpace -MinimumGb 64 -AttemptCleanup -Reason "Windows 11 prerequisites" | Out-Null
         $isoPath = Download-Windows11Iso
         if ($isoPath) {
             $restaged = Stage-UpgradeFromIso -IsoPath $isoPath -SkipCompatCheck
@@ -44,6 +45,11 @@ function Invoke-SelfRepair {
     if ($restaged) {
         Clear-FailureMarker
         Register-RebootReminderTasks
+        try {
+            Register-PostRebootValidationTask
+        } catch {
+            Write-Log -Message "Failed to register post-reboot validation task during self-repair. Error: $_" -Level "WARN"
+        }
         try {
             $toastRoot = if ($privateRoot) { $privateRoot } elseif ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Path $MyInvocation.MyCommand.Path -Parent }
             $toastScript = Join-Path -Path (Join-Path -Path $toastRoot -ChildPath "Toast-Notification") -ChildPath "Toast-Windows11RebootReminder.ps1"

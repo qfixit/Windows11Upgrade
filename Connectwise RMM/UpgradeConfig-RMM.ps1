@@ -1,6 +1,6 @@
 # Upgrade Configuration (RMM Parameter-Aware Builder)
-# Version 2.6.0
-# Date 11/30/2025
+# Version 2.7.0
+# Date 12/03/2025
 # Author: Quintin Sheppard
 # Summary: Emits C:\Temp\WindowsUpdate\config.json for ConnectWise RMM with @Parameter@ placeholders for later substitution.
 # Example (RMM task build step):
@@ -12,7 +12,8 @@ param(
     [string]$DynamicUpdate,
     [string]$AutoReboot,
     [string]$RebootReminder1Time,
-    [string]$RebootReminder2Time
+    [string]$RebootReminder2Time,
+    [string]$DocLink
 )
 
 $logFile = "C:\Windows11UpgradeLog.txt"
@@ -88,6 +89,7 @@ function New-UpgradeConfigObject {
     $config = [PSCustomObject][ordered]@{
         # Logging & state paths
         BaseLogFile                  = "C:\Windows11UpgradeLog.txt"
+        LogFile                      = $null
         StateDirectory               = $stateDirectory
         UpgradeStateFiles            = @{
             ScriptRunning = "C:\Temp\WindowsUpdate\ScriptRunning.txt"
@@ -104,6 +106,7 @@ function New-UpgradeConfigObject {
 
         # Setup execution
         SetupExeBaseArguments        = "/Auto Upgrade /copylogs `"{0}`" /NoReboot /EULA accept /Quiet"
+        SetupExeArguments            = ""
         MoSetupVolatileKey           = "HKLM:\SYSTEM\Setup\MoSetup\Volatile"
 
         # Tasks and reminders
@@ -120,6 +123,7 @@ function New-UpgradeConfigObject {
         ToastAssetsRoot              = "C:\Temp\WindowsUpdate\Toast-Notification"
         ToastHeroImage               = "hero.jpg"
         ToastLogoImage               = "logo.jpg"
+        DocLink                      = Resolve-ParameterOrToken -Value $DocLink -Token "@UpgradeGuide@"
         ToastAttributionText         = "Koltiv"
         ToastHeaderText              = "Windows 11 Upgrade"
 

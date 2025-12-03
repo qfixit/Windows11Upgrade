@@ -1,6 +1,6 @@
 # Start-Windows11Upgrade Orchestration
-# Version 2.6.1
-# Date 11/30/2025
+# Version 2.7.0
+# Date 12/03/2025
 # Author: Quintin Sheppard
 # Summary: Implements the Expected Workflow to stage the Windows 11 upgrade, handle reboots, and self-heal failures.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\Start-Windows11Upgrade.ps1'; Start-Windows11Upgrade"
@@ -24,7 +24,8 @@ try {
         }
     }
 
-    Write-Log "Windows 11 25H2 upgrade script started."
+    $banner = if ($script:VersionBanner) { $script:VersionBanner } else { "Version unknown" }
+    Write-Log ("Windows 11 25H2 upgrade script started. {0}" -f $banner)
 
     if (-not (Ensure-SentinelAgentCompatible)) {
         Remove-RebootReminderTasks
@@ -58,6 +59,28 @@ try {
         }
         Save-UpgradeState -State $scriptState
         $state = $scriptState
+    }
+
+    if ($state -and $state.Status -eq "ScriptRunning" -and $state.LastKnownBootTime) {
+        $bootChanged = $false
+        try {
+            $recordedBoot = [datetime]::Parse($state.LastKnownBootTime)
+            if ($currentBootTime -and $currentBootTime -gt $recordedBoot.AddSeconds(30)) {
+                $bootChanged = $true
+            }
+        } catch {
+            $bootChanged = $false
+        }
+        if ($bootChanged) {
+            Write-Log -Message "Detected interrupted run (ScriptRunning persisted across reboot). Initiating self-repair restage." -Level "WARN"
+            $restaged = Invoke-SelfRepair -State $state
+            $pendingHandledViaSelfRepair = $true
+            if (-not $restaged) {
+                $needsStaging = $true
+            } else {
+                $needsStaging = $false
+            }
+        }
     }
 
     if (Test-IsWindows11) {
@@ -122,6 +145,12 @@ try {
         Write-Log -Message "System requirements confirmed; proceeding to ISO download and staging." -Level "INFO"
 
         try {
+            Register-PostRebootValidationTask
+        } catch {
+            Write-Log -Message "Failed to register post-reboot validation task before download. Error: $_" -Level "WARN"
+        }
+
+        try {
             $isoPath = Download-Windows11Iso
             $stagingResult = Stage-UpgradeFromIso -IsoPath $isoPath -SkipCompatCheck
 
@@ -173,6 +202,13 @@ try {
                 }
             } else {
                 Write-Log -Message "Staging routine did not complete successfully." -Level "ERROR"
+                if (-not (Test-Path -Path $failureMarker)) {
+                    try {
+                        Write-FailureMarker "Upgrade staging failed. See Windows11UpgradeLog.txt for details."
+                    } catch {
+                        Write-Log -Message ("Failed to record failure marker after staging failure. Error: {0}" -f $_) -Level "WARN"
+                    }
+                }
                 try {
                     Clear-UpgradeState
                     Write-Log -Message "Cleared ScriptRunning/PendingReboot sentinels after staging failure to surface failure marker on next run." -Level "VERBOSE"
@@ -210,19 +246,17 @@ try {
     Invoke-AutoReboot -ShouldReboot $autoRebootPending
 } catch {
     Write-Log -Message "Windows 11 upgrade script encountered an unexpected interruption or error: $_" -Level "ERROR"
-    $failureMarked = $false
+    $failureReason = ("Unexpected termination: {0}" -f $_)
     try {
-        Write-FailureMarker ("Unexpected termination: {0}" -f $_)
-        $failureMarked = $true
+        Clear-UpgradeState
+    } catch {
+        Write-Log -Message ("Unable to clear upgrade state after interruption. Error: {0}" -f $_) -Level "WARN"
+    }
+
+    try {
+        Write-FailureMarker $failureReason
     } catch {
         Write-Log -Message ("Failed to record failure marker during interruption handling. Error: {0}" -f $_) -Level "WARN"
-    }
-    if (-not $failureMarked) {
-        try {
-            Clear-UpgradeState
-        } catch {
-            Write-Log -Message ("Unable to clear upgrade state after interruption. Error: {0}" -f $_) -Level "WARN"
-        }
     }
     try {
         Invoke-UpgradeFailureCleanup -PreserveHealthyIso

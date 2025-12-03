@@ -1,5 +1,5 @@
 # System & Compatibility Checks
-# Version 2.6.0
+# Version 2.6.1
 # Date 11/30/2025
 # Author: Quintin Sheppard
 # Summary: Hardware and SentinelOne compatibility validation for the upgrade workflow.
@@ -47,9 +47,8 @@ function Get-SentinelAgentVersion {
 function Ensure-SentinelAgentCompatible {
     $version = Get-SentinelAgentVersion
     if (-not $version) {
-        Write-Log -Message "SentinelOne agent not detected or version unavailable." -Level "ERROR"
-        Write-FailureMarker "SentinelOne agent version could not be determined."
-        return $false
+        Write-Log -Message "SentinelOne agent not detected; continuing without SentinelOne gating." -Level "INFO"
+        return $true
     }
 
     if ($version -eq [version]'0.0.0.0') {
