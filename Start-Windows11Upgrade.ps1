@@ -1,5 +1,5 @@
 # Start-Windows11Upgrade Orchestration
-# Version 2.6.0
+# Version 2.6.1
 # Date 11/30/2025
 # Author: Quintin Sheppard
 # Summary: Implements the Expected Workflow to stage the Windows 11 upgrade, handle reboots, and self-heal failures.

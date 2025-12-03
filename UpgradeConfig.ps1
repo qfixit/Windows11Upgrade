@@ -96,7 +96,7 @@ function Build-SetupArguments {
     )
 
     $dynamicPart = if ($DynamicUpdateEnabled) { "/DynamicUpdate Enable" } else { "/DynamicUpdate Disable" }
-    $args = "$BaseArguments $dynamicPart /noreboot"
+    $args = "$BaseArguments $dynamicPart /NoReboot"
     return $args.Trim()
 }
 
@@ -106,6 +106,10 @@ function Set-UpgradeConfig {
     $fallbackConfigPath = Join-Path -Path $scriptRoot -ChildPath "config.default.json"
 
     $config = Get-ConfigData -PrimaryPath $primaryConfigPath -FallbackPath $fallbackConfigPath
+
+    if ($config.PSObject.Properties.Match("LogFile").Count -eq 0) {
+        $config | Add-Member -NotePropertyName "LogFile" -NotePropertyValue $null -Force
+    }
 
     $config.LogFile = $config.BaseLogFile
     if ($config.DynamicUpdate -isnot [bool]) {

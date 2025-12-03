@@ -127,37 +127,8 @@ function Remove-RebootReminderTasks {
     }
 }
 
-function Ensure-PostRebootScript {
-    if (-not $script:CurrentScriptPath -or -not (Test-Path -Path $script:CurrentScriptPath)) {
-        Write-Log -Message "Unable to persist script for post-reboot validation because the current script path is unavailable." -Level "WARN"
-        return $null
-    }
-
-    try {
-        Ensure-Directory -Path $stateDirectory
-
-        $sourcePath = [System.IO.Path]::GetFullPath($script:CurrentScriptPath)
-        $destinationPath = [System.IO.Path]::GetFullPath($postRebootScriptPath)
-
-        if ($sourcePath -eq $destinationPath -and (Test-Path -Path $destinationPath)) {
-            return $destinationPath
-        }
-
-        Copy-Item -Path $sourcePath -Destination $destinationPath -Force
-        Write-Log -Message "Persisted current script to $destinationPath for post-reboot validation." -Level "VERBOSE"
-        return $destinationPath
-    } catch {
-        Write-Log -Message "Unable to persist script for post-reboot validation. Error: $_" -Level "ERROR"
-        return $null
-    }
-}
-
 function Register-PostRebootValidationTask {
-    $targetScript = Ensure-PostRebootScript
-    if (-not $targetScript) {
-        Write-Log -Message "Skipping registration of post-reboot validation task because the script could not be persisted." -Level "WARN"
-        return
-    }
+    $targetScript = Join-Path -Path $privateRoot -ChildPath "PostUpgradeCleanup.ps1"
 
     $powershellExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\WindowsPowerShell\v1.0\powershell.exe"
     $schtasksExe = Join-Path -Path $env:SystemRoot -ChildPath "System32\schtasks.exe"

@@ -27,7 +27,7 @@
     "ToastAssetsRoot": "C:\\Temp\\WindowsUpdate\\Toast-Notification",
     "ToastHeroImage": "hero.jpg",
     "ToastLogoImage": "logo.jpg",
-    "ToastAttributionText": "CompanyName",
+    "ToastAttributionText": "Koltiv",
     "ToastHeaderText": "Windows 11 Upgrade",
     "MinimumSentinelAgentVersion": "24.2.2.0",
     "DynamicUpdate": true,

@@ -1,6 +1,6 @@
 # Self-Repair Routine
-# Version 2.5.9
-# Date 11/29/2025
+# Version 2.6.1
+# Date 11/30/2025
 # Author: Quintin Sheppard
 # Summary: Restages the upgrade if a pending reboot failed to complete.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\SelfRepair\\SelfRepair.ps1'; Invoke-SelfRepair"
