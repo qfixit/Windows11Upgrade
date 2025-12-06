@@ -1,11 +1,17 @@
-# ISO Download and Setup Helpers
-# Version 2.7.0
-# Date 12/03/2025
+# ISO Download Helpers
+# Version 2.7.3
+# Date 12/04/2025
 # Author: Quintin Sheppard
-# Summary: Disk space checks, ISO health/hash validation, BITS download wrapper, and setup.exe staging helpers for the Windows 11 upgrade.
+# Summary: Disk space checks, ISO health/hash validation, and BITS download wrapper for the Windows 11 upgrade.
 # Example test (download only): powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\Windows11Upgrade\ISO Download\IsoDownload.ps1'; Invoke-TimedIsoDownload -SourceUrl 'https://example.com/test.iso' -DestinationPath 'C:\Temp\WindowsUpdate\Test.iso'"
 
 param()
+
+# Load setup/install helpers if present
+$installHelper = Join-Path -Path (Split-Path -Path $MyInvocation.MyCommand.Path -Parent) -ChildPath "SetupInstall.ps1"
+if (Test-Path -Path $installHelper -PathType Leaf) {
+    try { . $installHelper } catch { Write-Verbose ("Failed to load SetupInstall.ps1. Error: {0}" -f $_) }
+}
 
 function Invoke-DirectIsoDownload {
     param(
@@ -29,18 +35,6 @@ function Invoke-DirectIsoDownload {
     }
 }
 
-function Clean-BitsTempFiles {
-    try {
-        if (Test-Path -Path $stateDirectory) {
-            Get-ChildItem -Path $stateDirectory -Filter "BIT*.tmp" -File -ErrorAction Stop | ForEach-Object {
-                try { Remove-Item -Path $_.FullName -Force -ErrorAction Stop } catch {}
-            }
-        }
-    } catch {
-        Write-Log -Message ("Unable to clean BITS temp files. Error: {0}" -f $_) -Level "WARN"
-    }
-}
-
 function Invoke-TimedIsoDownload {
     param(
         [string]$SourceUrl,
@@ -52,6 +46,9 @@ function Invoke-TimedIsoDownload {
     $lastPercentLogged = -5
     $downloadCompleted = $false
     $bitsAttempted = $false
+    $lastActivity = [datetime]::UtcNow
+    $lastBytes = $null
+    $inactivityWindow = [timespan]::FromMinutes(5)
     try {
         if (Get-Command -Name Clean-BitsTempFiles -ErrorAction SilentlyContinue) {
             Clean-BitsTempFiles
@@ -100,12 +97,18 @@ function Invoke-TimedIsoDownload {
                     Complete-BitsTransfer -BitsJob $status -ErrorAction Stop
                     Write-Log -Message "ISO download completed: 100%" -Level "INFO"
                     $downloadCompleted = $true
+                    if (Get-Command -Name Show-UpgradeProgressToast -ErrorAction SilentlyContinue) {
+                        Show-UpgradeProgressToast -Phase Download -PercentComplete 100 -Status "Download complete"
+                    }
                     break
                 }
                 'TransferredWithErrors' {
                     Complete-BitsTransfer -BitsJob $status -ErrorAction Stop
                     Write-Log -Message "ISO download completed with recovered errors." -Level "WARN"
                     $downloadCompleted = $true
+                    if (Get-Command -Name Show-UpgradeProgressToast -ErrorAction SilentlyContinue) {
+                        Show-UpgradeProgressToast -Phase Download -PercentComplete 100 -Status "Download complete"
+                    }
                     break
                 }
                 'Error' {
@@ -125,9 +128,31 @@ function Invoke-TimedIsoDownload {
 
             if ($status.BytesTotal -gt 0 -and $status.JobState -eq 'Transferring') {
                 $percent = [math]::Round(($status.BytesTransferred / $status.BytesTotal) * 100, 1)
+                if ($null -ne $status.BytesTransferred -and ($lastBytes -eq $null -or $status.BytesTransferred -ne $lastBytes)) {
+                    $lastBytes = $status.BytesTransferred
+                    $lastActivity = [datetime]::UtcNow
+                }
                 if ($percent -ge ($lastPercentLogged + 5)) {
                     Write-Log -Message ("ISO download progress: {0}%" -f $percent) -Level "INFO"
                     $lastPercentLogged = $percent
+                    if (Get-Command -Name Show-UpgradeProgressToast -ErrorAction SilentlyContinue) {
+                        Show-UpgradeProgressToast -Phase Download -PercentComplete $percent -Status "Downloading..."
+                    }
+                }
+            }
+
+            if ($status.JobState -eq 'TransientError' -or $status.JobState -eq 'Suspended' -or $status.JobState -eq 'Transferring') {
+                if ([datetime]::UtcNow -gt $lastActivity.Add($inactivityWindow)) {
+                    Write-Log -Message ("BITS download stalled for more than {0} minutes; cancelling job and falling back to Invoke-WebRequest." -f [math]::Round($inactivityWindow.TotalMinutes, 0)) -Level "WARN"
+                    try {
+                        Remove-BitsTransfer -BitsJob $status -ErrorAction SilentlyContinue
+                    } catch {}
+                    try {
+                        Invoke-DirectIsoDownload -SourceUrl $SourceUrl -DestinationPath $DestinationPath
+                        return
+                    } catch {
+                        Write-ErrorCode -Code 11 -Detail $_
+                    }
                 }
             }
 
@@ -176,65 +201,6 @@ function Invoke-TimedIsoDownload {
     }
 }
 
-function Invoke-TimedSetupExecution {
-    param(
-        [string]$ExecutablePath,
-        [string]$Arguments,
-        [int]$ProgressTimeoutMinutes = 45
-    )
-
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    $process = $null
-    $progressTracker = @{
-        LastProgress   = $null
-        SourceDetected = $false
-        MissingLogged  = $false
-    }
-    $lastProgressChange = [datetime]::UtcNow
-    try {
-        $process = Start-Process -FilePath $ExecutablePath -ArgumentList $Arguments -PassThru -WindowStyle Hidden
-        if (-not $process) {
-            throw "setup.exe did not return a process handle."
-        }
-
-        while (-not $process.WaitForExit(5000)) {
-            if (Get-Command -Name Write-SetupProgressUpdate -ErrorAction SilentlyContinue) {
-                Write-SetupProgressUpdate -Tracker $progressTracker
-                if ($progressTracker.LastProgress -ne $null) {
-                    $lastProgressChange = [datetime]::UtcNow
-                }
-            }
-
-            if ($ProgressTimeoutMinutes -gt 0) {
-                $stallWindow = $lastProgressChange.AddMinutes($ProgressTimeoutMinutes)
-                if ([datetime]::UtcNow -gt $stallWindow) {
-                    try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
-                    throw ("setup.exe progress stalled at {0}% for more than {1} minutes." -f ($progressTracker.LastProgress -as [string]), $ProgressTimeoutMinutes)
-                }
-            }
-        }
-
-        if (Get-Command -Name Write-SetupProgressUpdate -ErrorAction SilentlyContinue) {
-            Write-SetupProgressUpdate -Tracker $progressTracker -Force
-        }
-        return $process
-    } finally {
-        $stopwatch.Stop()
-        $elapsed = $stopwatch.Elapsed
-        $script:SetupExecutionDuration = $elapsed
-        try {
-            if ($elapsed) {
-                $durationText = ("{0} ({1} seconds)" -f $elapsed.ToString("hh':'mm':'ss'.'fff", [System.Globalization.CultureInfo]::InvariantCulture), [math]::Round($elapsed.TotalSeconds, 2))
-            } else {
-                throw "Elapsed duration is null."
-            }
-        } catch {
-            Write-Log -Message ("Failed to format setup.exe duration. Error: {0}" -f $_) -Level "WARN"
-            $durationText = "$($elapsed)"
-        }
-        Write-Log -Message ("setup.exe execution duration: {0}" -f $durationText) -Level "INFO"
-    }
-}
 
 function Get-SystemDriveFreeSpaceGb {
     try {
@@ -258,8 +224,32 @@ function Ensure-SufficientDiskSpace {
 
     $freeSpace = Get-SystemDriveFreeSpaceGb
     if ($null -eq $freeSpace) {
-        Write-Log -Message "Free space could not be determined; continuing with caution." -Level "WARN"
-        return $true
+        try {
+            $cimDisk = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
+            if ($cimDisk) {
+                $freeSpace = [math]::Round($cimDisk.FreeSpace / 1GB, 2)
+            }
+        } catch {
+            Write-Log -Message ("Secondary disk space probe via CIM failed. Error: {0}" -f $_) -Level "VERBOSE"
+        }
+    }
+
+    if ($null -eq $freeSpace) {
+        try {
+            $psDrive = Get-PSDrive -Name C -ErrorAction Stop
+            if ($psDrive -and $psDrive.Free -ne $null) {
+                $freeSpace = [math]::Round($psDrive.Free / 1GB, 2)
+            }
+        } catch {
+            Write-Log -Message ("PSDrive free space probe failed. Error: {0}" -f $_) -Level "VERBOSE"
+        }
+    }
+
+    if ($null -eq $freeSpace) {
+        $failureReason = "Unable to determine free space on the system drive; aborting Windows 11 upgrade to avoid disk exhaustion."
+        Write-Log -Message $failureReason -Level "ERROR"
+        Write-FailureMarker $failureReason
+        throw $failureReason
     }
 
     if ($freeSpace -ge $MinimumGb) {
@@ -498,144 +488,4 @@ function Download-Windows11Iso {
     }
 }
 
-function Stage-UpgradeFromIso {
-    param (
-        [string]$IsoPath,
-        [switch]$SkipCompatCheck
-    )
-
-    if (-not $SkipCompatCheck) {
-        try {
-            if (Get-Command -Name Check-SystemRequirements -ErrorAction SilentlyContinue) {
-                Check-SystemRequirements | Out-Null
-            }
-        } catch {
-            Write-Log -Message "System does not meet Windows 11 requirements. Aborting. Error: $_" -Level "ERROR"
-            Write-FailureMarker "Hardware requirements validation failed."
-            return $false
-        }
-    }
-
-    if (-not (Test-Path -Path $IsoPath)) {
-        Write-Log -Message "ISO not found at $IsoPath. Aborting." -Level "ERROR"
-        Write-FailureMarker "ISO not found at $IsoPath"
-        return $false
-    }
-
-    if (-not (Get-Command -Name Mount-DiskImage -ErrorAction SilentlyContinue)) {
-        Write-Log -Message "Mount-DiskImage cmdlet not available on this system. Cannot continue." -Level "ERROR"
-        Write-ErrorCode -Code 13 -Detail "Mount-DiskImage cmdlet unavailable"
-    }
-
-    $setupLogPath = Join-Path -Path $stateDirectory -ChildPath "SetupLogs"
-    Ensure-Directory -Path $setupLogPath
-
-    $maxAttempts = 3
-    $attempt = 0
-    $success = $false
-    $failureReason = $null
-    $exitCode = $null
-
-    while ($attempt -lt $maxAttempts -and -not $success) {
-        $attempt++
-        $mountedImage = $null
-        try {
-            $mountedImage = Mount-DiskImage -ImagePath $IsoPath -PassThru -ErrorAction Stop
-            $volume = $mountedImage | Get-Volume | Where-Object { $_.DriveLetter } | Select-Object -First 1
-
-            if (-not $volume) {
-                throw "Mounted ISO did not expose a drive letter."
-            }
-
-            $driveLetter = $volume.DriveLetter
-            $setupPath = "{0}:\setup.exe" -f $driveLetter
-
-            if (-not (Test-Path -Path $setupPath)) {
-                throw "setup.exe not found on mounted ISO ($setupPath)."
-            }
-
-            $arguments = if ($SetupExeArguments) { ($SetupExeArguments -f $setupLogPath) } else { "/Auto Upgrade /copylogs `"$setupLogPath`" /DynamicUpdate Enable /EULA accept /noreboot /Quiet" }
-
-            Write-Log -Message ("Launching setup.exe from ISO with arguments: {0}" -f $arguments) -Level "INFO"
-            $process = Invoke-TimedSetupExecution -ExecutablePath $setupPath -Arguments $arguments
-            $exitCode = $process.ExitCode
-            Write-Log -Message ("setup.exe exited with code $exitCode.") -Level "INFO"
-
-            $successCodes = @(0, 3010, 1641)
-            if ($successCodes -contains $exitCode) {
-                $success = $true
-            } else {
-                Write-Log -Message "Setup.exe reported a failure staging the upgrade." -Level "ERROR"
-                $failureReason = "setup.exe exited with code $exitCode"
-            }
-        } catch {
-            Write-Log -Message "Failed to stage upgrade using ISO. Error: $_" -Level "ERROR"
-            $failureReason = "ISO staging threw exception: $_"
-        } finally {
-            if ($mountedImage) {
-                try { Dismount-DiskImage -ImagePath $IsoPath -ErrorAction SilentlyContinue } catch { }
-            }
-        }
-
-        if ($success) { break }
-
-        if ($failureReason -match "(?i)corrupt|unreadable|0xc1900107" -or $exitCode -eq 0xC1900107) {
-            try {
-                Remove-Item -Path $IsoPath -Force -ErrorAction Stop
-                Write-Log -Message "Removed suspected corrupt ISO at $IsoPath so the next attempt will download a fresh copy." -Level "WARN"
-            } catch {
-                Write-Log -Message "Failed to delete suspected corrupt ISO at $IsoPath. Error: $_" -Level "WARN"
-            }
-            if (Test-Path -Path $isoHashCacheFile) {
-                Remove-Item -Path $isoHashCacheFile -Force -ErrorAction SilentlyContinue
-            }
-        }
-
-        if ($exitCode -eq 0xC1900107) {
-            $btPath = Join-Path -Path $env:SystemDrive -ChildPath "$WINDOWS.~BT"
-            try {
-                if (Test-Path -Path $btPath) {
-                    Remove-Item -Path $btPath -Recurse -Force -ErrorAction Stop
-                    Write-Log -Message ("Removed stale setup directory {0} after setup error 0xC1900107." -f $btPath) -Level "WARN"
-                }
-            } catch {
-                Write-Log -Message ("Unable to remove stale setup directory {0}. Error: {1}" -f $btPath, $_) -Level "WARN"
-            }
-        }
-
-        if ($exitCode -eq 0xC1900208) {
-            Write-Log -Message "Setup.exe exited with 0xC1900208 (app/driver compatibility block). Technician review required." -Level "ERROR"
-            break
-        }
-
-        if ($attempt -lt $maxAttempts) {
-            Write-Log -Message ("Retrying ISO staging (attempt {0}/{1}) after failure." -f ($attempt + 1), $maxAttempts) -Level "WARN"
-            try {
-                $IsoPath = Download-Windows11Iso
-            } catch {
-                Write-Log -Message ("Retry download failed during staging recovery. Error: {0}" -f $_) -Level "ERROR"
-                break
-            }
-        }
-    }
-
-    if ($success) {
-        Clear-FailureMarker
-    } else {
-        if (-not $failureReason) {
-            $failureReason = "ISO staging failed for unspecified reason."
-        }
-        Write-FailureMarker $failureReason
-
-        if (Get-Command -Name Invoke-UpgradeFailureCleanup -ErrorAction SilentlyContinue) {
-            Invoke-UpgradeFailureCleanup -PreserveHealthyIso
-        }
-        if ($exitCode -eq 0xC1900208) {
-            Write-ErrorCode -Code 14 -Detail $failureReason
-        } elseif ($exitCode) {
-            Write-ErrorCode -Code 13 -Detail $failureReason
-        }
-    }
-
-    return $success
-}
+# staging/installation moved to SetupInstall.ps1 (Stage-UpgradeFromIso removed here)

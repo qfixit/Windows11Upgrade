@@ -1,8 +1,8 @@
 # Windows 11 Upgrade Orchestrator (Modular)
 # Quintin Sheppard
-# Updated 12/03/2025
+# Updated 12/04/2025
 # Author: Quintin Sheppard
-# Script Version 2.7.0
+# Script Version 2.7.1
 # Summary: Downloads/validates the Windows 11 25H2 ISO, stages setup.exe /noreboot, writes state markers, self-heals failed runs, and registers reminder/validation tasks.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -File ".\Windows11Upgrade.ps1" -VerboseLogging
 
@@ -92,6 +92,23 @@ if (Get-Command -Name Clean-BitsTempFiles -ErrorAction SilentlyContinue) {
 
 try {
     Start-Windows11Upgrade
+} catch {
+    Write-Log -Message ("Windows 11 upgrade script encountered a fatal error at the entry point: {0}" -f $_) -Level "ERROR"
+    try {
+        if (Get-Command -Name Clear-UpgradeState -ErrorAction SilentlyContinue) {
+            Clear-UpgradeState
+        }
+    } catch {
+        Write-Log -Message ("Unable to clear upgrade state after fatal error. Error: {0}" -f $_) -Level "WARN"
+    }
+    try {
+        if (Get-Command -Name Write-FailureMarker -ErrorAction SilentlyContinue) {
+            Write-FailureMarker ("Fatal error at entry point: {0}" -f $_)
+        }
+    } catch {
+        Write-Log -Message ("Unable to record failure marker after fatal error. Error: {0}" -f $_) -Level "WARN"
+    }
+    throw
 } finally {
     if ($script:InstanceMutex) {
         try { $script:InstanceMutex.ReleaseMutex() } catch {}

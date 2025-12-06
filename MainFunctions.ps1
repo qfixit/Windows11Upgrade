@@ -1,6 +1,6 @@
 # Core Utilities & Progress Helpers
-# Version 2.7.0
-# Date 12/03/2025
+# Version 2.7.1
+# Date 12/04/2025
 # Author: Quintin Sheppard
 # Summary: Common logging, directory creation, and progress/summary helpers used across the upgrade workflow.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Windows11Upgrade\\MainFunctions.ps1'; Write-Log 'hello world'"
@@ -48,15 +48,21 @@ function Write-Log {
         }
     }
 
-    switch ($Level) {
-        "ERROR"   { Write-Error $logMessage }
-        "WARN"    { Write-Warning $logMessage }
-        "VERBOSE" { Write-Verbose $logMessage }
-        default   { Write-Information -MessageData $logMessage -InformationAction Continue }
-    }
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        switch ($Level) {
+            "ERROR"   { Write-Error -Message $logMessage -ErrorAction Continue }
+            "WARN"    { Write-Warning $logMessage }
+            "VERBOSE" { Write-Verbose $logMessage }
+            default   { Write-Information -MessageData $logMessage -InformationAction Continue }
+        }
 
-    if ($Level -ne "VERBOSE") {
-        Write-Verbose $logMessage
+        if ($Level -ne "VERBOSE") {
+            Write-Verbose $logMessage
+        }
+    } finally {
+        $ErrorActionPreference = $previousEap
     }
 }
 
@@ -157,13 +163,21 @@ function Show-UpgradeProgressToast {
         [string]$DocLink
     )
 
-    if (-not (Should-ShowToastPhase -Phase $Phase)) { return }
     if (-not $ToastAssetsRoot) { return }
 
     $toastScript = Join-Path -Path $ToastAssetsRoot -ChildPath "Toast-Windows11Download.ps1"
     if (-not (Test-Path -Path $toastScript -PathType Leaf)) { return }
 
-    $appId = Get-ToastAppId
+    $phaseChanged = $false
+    if ($script:LastToastPhase) {
+        if ($script:LastToastPhase -ne $Phase) { $phaseChanged = $true }
+    }
+    $script:LastToastPhase = $Phase
+
+    $renderPercent = $PercentComplete
+    if ($phaseChanged -and $PercentComplete -ge 0) {
+        $renderPercent = 0
+    }
 
     $powershellExe = [System.IO.Path]::Combine($env:SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
     $argumentList = @(
@@ -171,7 +185,7 @@ function Show-UpgradeProgressToast {
         "-NoProfile",
         "-File", "`"$toastScript`"",
         "-Phase", $Phase,
-        "-PercentComplete", ([string]::Format([System.Globalization.CultureInfo]::InvariantCulture, "{0}", $PercentComplete))
+        "-PercentComplete", ([string]::Format([System.Globalization.CultureInfo]::InvariantCulture, "{0}", $renderPercent))
     )
 
     if ($Status) { $argumentList += @("-Status", "`"$Status`"") }
@@ -189,7 +203,7 @@ function Show-UpgradeProgressToast {
 
 function Write-ErrorCode {
     param(
-        [int]$Code,
+        [Parameter(Mandatory)][object]$Code,
         [string]$Detail = ""
     )
 
@@ -198,11 +212,12 @@ function Write-ErrorCode {
         $info = Get-ErrorCodeInfo -Code $Code
     }
 
+    $codeDisplay = if ($info -and $info.Code) { $info.Code } else { $Code }
     $title = if ($info) { $info.Title } else { "Unknown error" }
     $description = if ($info) { $info.Description } else { "" }
     $remediation = if ($info) { $info.Remediation } else { "" }
 
-    $message = ("Error {0}: {1}" -f $Code, $title)
+    $message = ("Error {0}: {1}" -f $codeDisplay, $title)
     if ($description) { $message = "$message. $description" }
     if ($Detail) { $message = "$message. $Detail" }
     if ($remediation) { $message = "$message. Remediation: $remediation" }
@@ -211,8 +226,14 @@ function Write-ErrorCode {
     if (Get-Command -Name Write-FailureMarker -ErrorAction SilentlyContinue) {
         Write-FailureMarker $message
     }
-    $global:LASTEXITCODE = $Code
-    exit $Code
+
+    $exitValue = 1
+    $parsed = $null
+    if ([int]::TryParse($Code.ToString(), [ref]$parsed)) {
+        $exitValue = $parsed
+    }
+    $global:LASTEXITCODE = $exitValue
+    exit $exitValue
 }
 
 function Get-SetupProgressSnapshot {
@@ -283,7 +304,7 @@ function Write-SetupProgressUpdate {
         }
     }
 
-    if (-not $shouldLog -and $Force -and $Tracker.SourceDetected) {
+    if (-not $shouldLog -and $Force -and $Tracker.SourceDetected -and ($Tracker.LastProgress -ne 100)) {
         $finalProgress = if ($null -ne $Tracker.LastProgress) { "{0}%" -f $Tracker.LastProgress } else { "unknown" }
         Write-Log -Message ("Install progress final state: {0}" -f $finalProgress) -Level "INFO"
     }
