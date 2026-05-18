@@ -1,6 +1,6 @@
 # Detection Helpers
-# Version 2.5.9
-# Date 11/29/2025
+# Version 2.5.10
+# Date 5/18/2026
 # Author: Quintin Sheppard
 # Summary: OS detection and boot-time helpers.
 # Example: powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ". '\\Private\\Detection\\Detection.ps1'; Test-IsWindows11"
@@ -18,7 +18,7 @@ function Test-IsWindows11 {
             $displayVersion = $osProps.DisplayVersion
         }
 
-        $isWindows11 = ($buildNumber -ge 22000) -or ($productName -like "*Windows 11*")
+        $isWindows11 = ($buildNumber -ge 26200)
         Write-Log -Message ("OS detection: Product={0}; Build={1}; DisplayVersion={2}; DetectedWindows11={3}" -f $productName, $buildNumber, $displayVersion, $isWindows11) -Level "VERBOSE"
         return $isWindows11
     } catch {
